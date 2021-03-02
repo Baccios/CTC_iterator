@@ -283,6 +283,7 @@ class CTCCircuitSimulator:
             # Need to transpile the circuits first for optimization
             circuits = transpile(circuits, backend=backend)
             print("Circuits built and transpiled!")
+            # circuits[len(circuits) - 1].draw(output="mpl", filename="./test.png")  # DEBUG
 
             # Use Job Manager to break the circuits into multiple jobs.
             job_manager = IBMQJobManager()

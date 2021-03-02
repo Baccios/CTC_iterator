@@ -18,7 +18,7 @@ def _generate_v_gate(size):
     :return: the CTC gate
     :rtype: qiskit.circuit.Gate
     """
-    # build the V subcircuit
+    # build the V sub circuit
     ctc_circuit = QuantumCircuit(2 * size, name='V Gate')
 
     # ### R block

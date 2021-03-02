@@ -10,7 +10,7 @@ from ctc.simulation import CTCCircuitSimulator
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     provider = IBMQ.load_account()
-    backend = provider.get_backend('ibmq_qasm_simulator')
+    backend = provider.get_backend('ibmq_santiago')
     """
     provider = IBMQ.get_provider(hub='ibm-q', group='open', project='main')
     backend = least_busy(provider.backends(
@@ -20,7 +20,7 @@ if __name__ == '__main__':
                                         and 'reset' in x.configuration().supported_instructions))
     print("least busy backend: ", backend)
     """
-    sim = CTCCircuitSimulator(size=2, k_value=0)
-    sim.test_convergence(c_value=1, start=1, stop=21, step=2, backend=backend)
+    sim = CTCCircuitSimulator(size=2, k_value=2)
+    sim.test_convergence(c_value=0, start=1, stop=21, step=2, backend=backend)
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
