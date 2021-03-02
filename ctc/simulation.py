@@ -22,6 +22,7 @@ from qiskit.providers.ibmq.managed import IBMQJobManager
 import matplotlib.pyplot as plt
 
 from ctc.block_generator import get_ctc_assisted_gate
+from ctc.gates.cloning import CloningGate
 
 
 class CTCCircuitSimulator:
@@ -30,7 +31,9 @@ class CTCCircuitSimulator:
     simulation of a CTC assisted iterated circuit.
     """
 
-    def __init__(self, size, k_value, base_block=None):
+    _cloning_size = 7
+
+    def __init__(self, size, k_value, cloning_size=7, base_block=None):
         """
         Initialize the simulator with a set of parameters.
 
@@ -41,6 +44,8 @@ class CTCCircuitSimulator:
         :param base_block: The gate to be used as basic block. When not specified,
                 the class will use a default one using ctc.block_generator.get_ctc_assisted_gate
         :type base_block: qiskit.circuit.Gate
+        :param cloning_size: the size of the internal CloningGate
+        :type cloning_size: int
         """
 
         if size <= 0:
@@ -50,6 +55,7 @@ class CTCCircuitSimulator:
 
         self._size = size
         self._k_value = k_value
+        self._cloning_size = cloning_size
         if base_block is None:
             self._ctc_gate = get_ctc_assisted_gate(size)
         else:
@@ -57,10 +63,18 @@ class CTCCircuitSimulator:
                 raise TypeError("parameter base_block must be a Gate")
             self._ctc_gate = base_block
 
-    def _build_dctr(self, iterations):
+    def _build_dctr(self, iterations, cloning="no_cloning"):
         """
         Build the dctr circuit using instance initialization parameters (utility)
         :param iterations: The number of iterations to build
+        :type iterations: int
+        :param cloning: can assume one of these values:
+                    <ol>
+                        <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                        <li>"initial": use cloning only for the first iterations</li>
+                        <li>"full": use cloning for each iteration
+                    </ol>
+        :type cloning: str
         :return: the full circuit ready to run.
         :rtype: qiskit.circuit.Instruction
         """
@@ -69,20 +83,73 @@ class CTCCircuitSimulator:
         init_gate = self._get_psi_init()
 
         qubits = QuantumRegister(2 * size)
+        clone_qubits = QuantumRegister(self._cloning_size)
         dctr_circuit = QuantumCircuit(qubits)
 
-        # initialize the first of CTC qubits with psi
-        dctr_circuit.append(init_gate, [qubits[size]])
+        if cloning == "no_cloning":
+            # initialize the first of CTC qubits with psi
+            dctr_circuit.append(init_gate, [qubits[size]])
+        else:
+            dctr_circuit.add_register(clone_qubits)
+            # initialize the cloning circuit
+            dctr_circuit.append(init_gate, [clone_qubits[0]])
+            dctr_circuit.append(CloningGate(self._cloning_size), clone_qubits)
+            # use the first clone to initialize psi
+            dctr_circuit.swap(qubits[size], clone_qubits[1])
+
+        next_clone_index = 2  # used to keep track of the clone to be used
+
+        # useful to update next_clone_index
+        def update_index(i):
+            return (i + 1) % self._cloning_size
 
         # place the initial CTC gate
         dctr_circuit.append(self._ctc_gate, qubits)
 
-        iteration_instruction = self._get_iteration()
+        # behavior depends on the value of cloning attribute:
+        if cloning == "no_cloning":
+            # in this case we simply apply default iterations with the real state
+            iteration_instruction = self._get_iteration()
+            for _ in range(iterations - 1):
+                dctr_circuit.append(iteration_instruction, qubits)
 
-        for _ in range(iterations - 1):
-            dctr_circuit.append(iteration_instruction, qubits)
+        elif cloning == "initial":
+            # in this case we use clones as long as they are available (self._cloning_size - 1)
+            iteration_instruction = self._get_iteration()
+            for _ in range(iterations - 1):
+                if next_clone_index == 0:  # if clones are finished we use the real state
+                    dctr_circuit.append(iteration_instruction, qubits)
+                else:
+                    dctr_circuit.append(
+                        self._get_iteration(psi_qubit=clone_qubits[next_clone_index]),
+                        qubits[:] + clone_qubits[:]
+                    )
+                    next_clone_index = update_index(next_clone_index)
 
-        # dctr_circuit.draw(output="mpl", filename="./test.png")  # DEBUG
+        elif cloning == "full":
+            # in this case we always use clones. If they are finished, we reset and clone again
+            for _ in range(iterations - 1):
+                if next_clone_index == 0:  # in this case we need to re init clones
+                    for qubit in clone_qubits:
+                        dctr_circuit.reset(qubit)
+                    dctr_circuit.append(init_gate, [clone_qubits[0]])
+                    dctr_circuit.append(CloningGate(self._cloning_size), clone_qubits)
+                    dctr_circuit.append(
+                        self._get_iteration(psi_qubit=clone_qubits[1]), qubits[:] + clone_qubits[:]
+                    )
+                    next_clone_index = 2
+                else:
+                    dctr_circuit.append(
+                        self._get_iteration(psi_qubit=clone_qubits[next_clone_index]),
+                        qubits[:] + clone_qubits[:]
+                    )
+                    next_clone_index = update_index(next_clone_index)
+
+        else:
+            raise ValueError("cloning must be either \"no_cloning\", \"initial\" or \"full\"")
+
+        # dctr_circuit.draw(output="mpl")  # DEBUG
+        # plt.show()
 
         return dctr_circuit.to_instruction()
 
@@ -106,17 +173,24 @@ class CTCCircuitSimulator:
         init_gate.label = "psi-init"
         return init_gate
 
-    def _get_iteration(self):
+    def _get_iteration(self, psi_qubit=None):
         """
         Get a single iteration of the circuit as a gate
 
+        :param psi_qubit: The qubit containing psi to use as input to the CTC gate.
+                             If set to None, psi is initialized using Initialize()
+        :type psi_qubit: qiskit.circuit.Qubit
         :return: The iteration gate
         :rtype: qiskit.circuit.Instruction
         """
         size = self._size
 
         qubits = QuantumRegister(2 * size)
+
         iter_circuit = QuantumCircuit(qubits)
+
+        if psi_qubit is not None:
+            iter_circuit.add_register(psi_qubit.register)
 
         init_gate = self._get_psi_init()
 
@@ -130,7 +204,10 @@ class CTCCircuitSimulator:
             iter_circuit.reset(i)
 
         # initialize the first CTC gate
-        iter_circuit.append(init_gate, [qubits[size]])
+        if psi_qubit is None:
+            iter_circuit.append(init_gate, [qubits[size]])
+        else:
+            iter_circuit.swap(qubits[size], psi_qubit)
         iter_circuit.append(self._ctc_gate, qubits)
 
         return iter_circuit.to_instruction()
@@ -177,7 +254,7 @@ class CTCCircuitSimulator:
             if bit == '1':
                 dctr_circuit.x(i)
 
-    def simulate(self, c_value, iterations, backend=QasmSimulator(), shots=512):
+    def simulate(self, c_value, iterations, **params):
         """
         Simulate a run of the CTC iterated circuit
 
@@ -185,17 +262,36 @@ class CTCCircuitSimulator:
         :type c_value: int, str
         :param iterations: the number of iterations to simulate
         :type iterations: int
-        :param backend: The backend to use, defaults to QasmSimulator()
-        :type backend: qiskit.providers.aer.backends.aerbackend.AerBackend
-        :param shots: THe number of shots for the simulation
+        :param params:
+            List of accepted parameters:
+            <ul>
+              <li>
+                cloning: can assume one of these values:
+                <ol>
+                    <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                    <li>"initial": use cloning only for the first iterations</li>
+                    <li>"full": use cloning for each iteration
+                </ol>
+              </li>
+              <li>
+                backend: The backend to use, defaults to QasmSimulator()
+              </li>
+              <li>
+                shots: The number of shots for the simulation. Defaults to 512
+              </li>
+            </ul>
         :return: The count list of results
         :rtype: dict
         """
-        dctr_simulation_circuit = self._build_simulator_circuit(c_value, iterations)
+        backend = params.get("backend", QasmSimulator())
+        cloning = params.get("cloning", "no_cloning")
+        shots = params.get("shots", 512)
+
+        dctr_simulation_circuit = self._build_simulator_circuit(c_value, iterations, cloning)
 
         job = execute(dctr_simulation_circuit, backend, shots=shots)
 
-        job_monitor(job)
+        # job_monitor(job) # DEBUG
 
         counts = job.result().get_counts()
 
@@ -204,11 +300,19 @@ class CTCCircuitSimulator:
 
         return counts
 
-    def _build_simulator_circuit(self, c_value, iterations, add_measurements=True):
+    def _build_simulator_circuit(self, c_value, iterations,
+                                 cloning="no_cloning", add_measurements=True):
         """
         Build a dctr QuantumCircuit ready for a simulation (utility)
         :param c_value: the initial value for ancillary qubits
         :param iterations: the number of iterations in the circuit
+        :param cloning: can assume one of these values:
+                    <ol>
+                        <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                        <li>"initial": use cloning only for the first iterations</li>
+                        <li>"full": use cloning for each iteration
+                    </ol>
+        :type cloning: str
         :param add_measurements: if True, also adds measurements at the end of the circuit
         :type add_measurements: bool
         :return: The circuit ready to be executed
@@ -218,16 +322,25 @@ class CTCCircuitSimulator:
         if iterations <= 0:
             raise ValueError("parameter iterations must be greater than zero")
 
-        dctr_instr = self._build_dctr(iterations)
+        dctr_instr = self._build_dctr(iterations, cloning)
 
         # initialize the final circuit
-        qubits = QuantumRegister(self._size * 2)
         classical_bits = ClassicalRegister(self._size)
+        qubits = QuantumRegister(self._size * 2)
+
         dctr_simulation_circuit = QuantumCircuit(qubits, classical_bits)
 
-        # initialize ancillary qubits
-        self._initialize_c_state(c_value, dctr_simulation_circuit)
-        dctr_simulation_circuit.append(dctr_instr, qubits)
+        if cloning != "no_cloning":
+            clone_qubits = QuantumRegister(self._cloning_size)
+            dctr_simulation_circuit.add_register(clone_qubits)
+            # initialize ancillary qubits
+            self._initialize_c_state(c_value, dctr_simulation_circuit)
+            dctr_simulation_circuit.append(dctr_instr, qubits[:] + clone_qubits[:])
+
+        else:
+            # initialize ancillary qubits
+            self._initialize_c_state(c_value, dctr_simulation_circuit)
+            dctr_simulation_circuit.append(dctr_instr, qubits)
 
         if add_measurements:
             # noinspection PyTypeChecker
@@ -251,7 +364,7 @@ class CTCCircuitSimulator:
         """
         return ('{0:0' + str(self._size) + 'b}').format(value)
 
-    def test_convergence(self, c_value, start, stop, step=2, backend=QasmSimulator(), shots=1024):
+    def test_convergence(self, c_value, start, stop, step=2, **params):
         """
         Test the convergence rate of the algorithm by simulating it
         under an increasing number of iterations. Save the output plots in ./out
@@ -264,12 +377,29 @@ class CTCCircuitSimulator:
         :type stop: int
         :param step: the iterations increase step
         :type step: int
-        :param backend: The backend to use, defaults to QasmSimulator()
-        :type backend: qiskit.aer.backends.aerbackend.AerBackend
-        :param shots: The number of shots for each simulation, defaults to 1024
-        :type shots: int
+        :param params:
+            List of accepted parameters:
+            <ul>
+              <li>
+                cloning: can assume one of these values:
+                <ol>
+                    <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                    <li>"initial": use cloning only for the first iterations</li>
+                    <li>"full": use cloning for each iteration
+                </ol>
+              </li>
+              <li>
+                backend: The backend to use, defaults to QasmSimulator()
+              </li>
+              <li>
+                shots: The number of shots for the simulation. Defaults to 1024
+              </li>
+            </ul>
         :return: None
         """
+        cloning = params.get("cloning", "no_cloning")
+        backend = params.get("backend", QasmSimulator())
+        shots = params.get("shots", 1024)
 
         iterations = list(range(start, stop + 1, step))
 
@@ -278,7 +408,8 @@ class CTCCircuitSimulator:
         if isinstance(backend, IBMQBackend):
 
             print("Building the circuits to submit...")
-            circuits = [self._build_simulator_circuit(c_value, i) for i in iterations]
+            circuits = \
+                [self._build_simulator_circuit(c_value, i, cloning=cloning) for i in iterations]
 
             # Need to transpile the circuits first for optimization
             circuits = transpile(circuits, backend=backend)
@@ -311,11 +442,11 @@ class CTCCircuitSimulator:
             conf_intervals_95 = []
 
             for i in iterations:
-                count = self.simulate(c_value, i, backend=backend, shots=shots)
+                count = self.simulate(c_value, i, cloning=cloning, backend=backend, shots=shots)
                 norm_shots = sum(count.values())  # should be equal to shots
                 success_prob = count[self._binary(self._k_value)] / norm_shots
                 confidence_int_95 = scipy.stats.norm.ppf(0.975) * \
-                    sqrt(success_prob * (1 - success_prob) / norm_shots)
+                                    sqrt(success_prob * (1 - success_prob) / norm_shots)
 
                 probabilities.append(success_prob)
                 conf_intervals_95.append(confidence_int_95)
