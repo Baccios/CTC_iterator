@@ -8,7 +8,7 @@ from math import pi
 from qiskit import QuantumCircuit
 
 
-def _generate_v_gate(size):
+def _generate_v_circuit(size):
     """
     Get a CTC gate using the algorithm in
     <a href="https://arxiv.org/abs/1901.00379">this article</a>
@@ -16,7 +16,7 @@ def _generate_v_gate(size):
     :param size: Size (in qubits) of the gate instance
     :type size: int
     :return: the CTC gate
-    :rtype: qiskit.circuit.Gate
+    :rtype: qiskit.circuit.QuantumCircuit
     """
     # build the V sub circuit
     ctc_circuit = QuantumCircuit(2 * size, name='V Gate')
@@ -41,11 +41,11 @@ def _generate_v_gate(size):
     for i in range(size):
         ctc_circuit.cnot(i, size + i)
 
-    # Convert to a gate and return it
-    return ctc_circuit.to_gate(label='V gate')
+    # return the result
+    return ctc_circuit
 
 
-def get_ctc_assisted_gate(size, method="v_gate"):
+def get_ctc_assisted_circuit(size, method="v_gate"):
     """
     Get a CTC gate specifying its size and (optionally) the method used to build it.
 
@@ -63,9 +63,9 @@ def get_ctc_assisted_gate(size, method="v_gate"):
                     </ol>
     :type method: str
     :return: the CTC gate
-    :rtype: qiskit.circuit.Gate
+    :rtype: qiskit.circuit.QuantumCircuit
     """
     # Other methods are left for future updates
     if method != "v_gate":
         raise ValueError("method must be set to one of the specified values")
-    return _generate_v_gate(size)
+    return _generate_v_circuit(size)

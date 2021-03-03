@@ -5,6 +5,8 @@ from math import pi, sqrt
 
 import numpy as np
 
+# import matplotlib.pyplot as plt
+
 from qiskit import QuantumRegister
 from qiskit.circuit import Gate
 
@@ -61,7 +63,7 @@ class CloningGate(Gate):
 
         num_qubits = self._num_qubits
 
-        qubits = QuantumRegister(num_qubits)
+        qubits = QuantumRegister(num_qubits, "clone_q")
         cloning_circuit = QuantumCircuit(qubits)
 
         for i in range(1, num_qubits, 2):

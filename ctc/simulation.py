@@ -21,8 +21,9 @@ from qiskit.providers.ibmq.managed import IBMQJobManager
 # import basic plot tools
 import matplotlib.pyplot as plt
 
-from ctc.block_generator import get_ctc_assisted_gate
+# from ctc.block_generator import get_ctc_assisted_circuit
 from ctc.gates.cloning import CloningGate
+from ctc.gates.ctc_assisted import CTCGate
 
 
 class CTCCircuitSimulator:
@@ -30,8 +31,6 @@ class CTCCircuitSimulator:
     This class provides tools to generate, run and visualize results of a
     simulation of a CTC assisted iterated circuit.
     """
-
-    _cloning_size = 7
 
     def __init__(self, size, k_value, cloning_size=7, base_block=None):
         """
@@ -57,7 +56,7 @@ class CTCCircuitSimulator:
         self._k_value = k_value
         self._cloning_size = cloning_size
         if base_block is None:
-            self._ctc_gate = get_ctc_assisted_gate(size)
+            self._ctc_gate = CTCGate(2*size, method="v_gate", label="V Gate")
         else:
             if not isinstance(base_block, Gate):
                 raise TypeError("parameter base_block must be a Gate")
@@ -71,7 +70,7 @@ class CTCCircuitSimulator:
         :param cloning: can assume one of these values:
                     <ol>
                         <li>"no_cloning": Do not use cloning to replicate psi state</li>
-                        <li>"initial": use cloning only for the first iterations</li>
+                        <li>"initial": use cloning only for the first cloning_size iterations</li>
                         <li>"full": use cloning for each iteration
                     </ol>
         :type cloning: str
@@ -97,11 +96,13 @@ class CTCCircuitSimulator:
             # use the first clone to initialize psi
             dctr_circuit.swap(qubits[size], clone_qubits[1])
 
-        next_clone_index = 2  # used to keep track of the clone to be used
-
         # useful to update next_clone_index
         def update_index(i):
-            return (i + 1) % self._cloning_size
+            res = (i + 1) % self._cloning_size
+            # print("Next clone index is: " + str(res))  # DEBUG
+            return res
+
+        next_clone_index = update_index(1)  # used to keep track of the clone to be used
 
         # place the initial CTC gate
         dctr_circuit.append(self._ctc_gate, qubits)
@@ -210,6 +211,9 @@ class CTCCircuitSimulator:
             iter_circuit.swap(qubits[size], psi_qubit)
         iter_circuit.append(self._ctc_gate, qubits)
 
+        # iter_circuit.draw(output="mpl")  # DEBUG
+        # plt.show()
+
         return iter_circuit.to_instruction()
 
     @staticmethod
@@ -269,7 +273,7 @@ class CTCCircuitSimulator:
                 cloning: can assume one of these values:
                 <ol>
                     <li>"no_cloning": Do not use cloning to replicate psi state</li>
-                    <li>"initial": use cloning only for the first iterations</li>
+                    <li>"initial": use cloning only for the first cloning_size iterations</li>
                     <li>"full": use cloning for each iteration
                 </ol>
               </li>
@@ -309,7 +313,7 @@ class CTCCircuitSimulator:
         :param cloning: can assume one of these values:
                     <ol>
                         <li>"no_cloning": Do not use cloning to replicate psi state</li>
-                        <li>"initial": use cloning only for the first iterations</li>
+                        <li>"initial": use cloning only for the first cloning_size iterations</li>
                         <li>"full": use cloning for each iteration
                     </ol>
         :type cloning: str
@@ -384,7 +388,7 @@ class CTCCircuitSimulator:
                 cloning: can assume one of these values:
                 <ol>
                     <li>"no_cloning": Do not use cloning to replicate psi state</li>
-                    <li>"initial": use cloning only for the first iterations</li>
+                    <li>"initial": use cloning only for the first cloning_size iterations</li>
                     <li>"full": use cloning for each iteration
                 </ol>
               </li>
@@ -446,7 +450,7 @@ class CTCCircuitSimulator:
                 norm_shots = sum(count.values())  # should be equal to shots
                 success_prob = count[self._binary(self._k_value)] / norm_shots
                 confidence_int_95 = scipy.stats.norm.ppf(0.975) * \
-                                    sqrt(success_prob * (1 - success_prob) / norm_shots)
+                    sqrt(success_prob * (1 - success_prob) / norm_shots)
 
                 probabilities.append(success_prob)
                 conf_intervals_95.append(confidence_int_95)
