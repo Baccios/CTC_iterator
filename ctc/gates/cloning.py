@@ -7,7 +7,7 @@ import numpy as np
 
 # import matplotlib.pyplot as plt
 
-from qiskit import QuantumRegister
+from qiskit import QuantumRegister, QuantumCircuit
 from qiskit.circuit import Gate
 
 
@@ -29,12 +29,9 @@ class CloningGate(Gate):
         :return:
         """
 
-        # pylint: disable=cyclic-import
-        from qiskit.circuit.quantumcircuit import QuantumCircuit
-
         # creates the preparation gate
         prep_qr = QuantumRegister(2)
-        prep_circuit = QuantumCircuit(prep_qr, name='prep')  # Create a quantum circuit with 2 qubits
+        prep_circuit = QuantumCircuit(prep_qr, name='prep')  # Create a circuit with 2 qubits
 
         if method == "eqcm_xz":
             # Define the rotation angles
@@ -92,10 +89,8 @@ class CloningGate(Gate):
         """
         define gate behavior
         """
-        # pylint: disable=cyclic-import
-        from qiskit.circuit.quantumcircuit import QuantumCircuit
 
-        self._prep_gate = self._build_prep_gate(self._method)
+        prep_gate = self._build_prep_gate(self._method)
 
         num_qubits = self._num_qubits
 
@@ -103,7 +98,7 @@ class CloningGate(Gate):
         cloning_circuit = QuantumCircuit(qubits)
 
         for i in range(1, num_qubits, 2):
-            cloning_circuit.append(self._prep_gate, [qubits[i], qubits[i + 1]])
+            cloning_circuit.append(prep_gate, [qubits[i], qubits[i + 1]])
 
         # CNOT between the first qubit (control) and the odd qubits (targets)
         for i in range(1, num_qubits, 2):

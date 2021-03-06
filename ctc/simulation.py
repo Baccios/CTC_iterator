@@ -98,7 +98,10 @@ class CTCCircuitSimulator:
             dctr_circuit.add_register(clone_qubits)
             # initialize the cloning circuit
             dctr_circuit.append(init_gate, [clone_qubits[0]])
-            dctr_circuit.append(CloningGate(self._cloning_size, method=cloning_method), clone_qubits)
+            dctr_circuit.append(
+                CloningGate(self._cloning_size, method=cloning_method),
+                clone_qubits
+            )
             # use the first clone to initialize psi
             dctr_circuit.swap(qubits[size], clone_qubits[1])
 
@@ -140,7 +143,10 @@ class CTCCircuitSimulator:
                     for qubit in clone_qubits:
                         dctr_circuit.reset(qubit)
                     dctr_circuit.append(init_gate, [clone_qubits[0]])
-                    dctr_circuit.append(CloningGate(self._cloning_size, method=cloning_method), clone_qubits)
+                    dctr_circuit.append(
+                        CloningGate(self._cloning_size, method=cloning_method),
+                        clone_qubits
+                    )
                     dctr_circuit.append(
                         self._get_iteration(psi_qubit=clone_qubits[1]), qubits[:] + clone_qubits[:]
                     )
@@ -293,7 +299,9 @@ class CTCCircuitSimulator:
                 cloning_method: the cloning method. Can be one of:
                 <ol>
                     <li>"uqcm": use the Universal Quantum Cloning Machine</li>
-                    <li>"eqcm_xz (default)": use cloning machine optimized for equatorial qubits on x-z plane</li>
+                    <li>
+                        "eqcm_xz" (default):
+                        use cloning machine optimized for equatorial qubits on x-z plane</li>
                 </ol>
               </li>
             </ul>
@@ -306,7 +314,9 @@ class CTCCircuitSimulator:
         shots = params.get("shots", 512)
 
         dctr_simulation_circuit = \
-            self._build_simulator_circuit(c_value, iterations, cloning=cloning, cloning_method=cloning_method)
+            self._build_simulator_circuit(
+                c_value, iterations, cloning=cloning, cloning_method=cloning_method
+            )
 
         job = execute(dctr_simulation_circuit, backend, shots=shots)
 
@@ -320,7 +330,9 @@ class CTCCircuitSimulator:
         return counts
 
     def _build_simulator_circuit(self, c_value, iterations,
-                                 cloning="no_cloning", cloning_method="eqcm_xz", add_measurements=True):
+                                 cloning="no_cloning",
+                                 cloning_method="eqcm_xz",
+                                 add_measurements=True):
         """
         Build a dctr QuantumCircuit ready for a simulation (utility)
         :param c_value: the initial value for ancillary qubits
@@ -417,7 +429,10 @@ class CTCCircuitSimulator:
                 cloning_method: the cloning method. Can be one of:
                 <ol>
                     <li>"uqcm": use the Universal Quantum Cloning Machine</li>
-                    <li>"eqcm_xz (default)": use cloning machine optimized for equatorial qubits on x-z plane</li>
+                    <li>
+                        "eqcm_xz" (default):
+                        use cloning machine optimized for equatorial qubits on x-z plane
+                    </li>
                 </ol>
               </li>
               <li>
@@ -442,7 +457,8 @@ class CTCCircuitSimulator:
 
             print("Building the circuits to submit...")
             circuits = [
-                self._build_simulator_circuit(c_value, i, cloning=cloning, cloning_method=cloning_method)
+                self._build_simulator_circuit(c_value, i, cloning=cloning,
+                                              cloning_method=cloning_method)
                 for i in iterations
             ]
 
@@ -477,7 +493,15 @@ class CTCCircuitSimulator:
             conf_intervals_95 = []
 
             for i in iterations:
-                count = self.simulate(c_value, i, cloning=cloning, backend=backend, shots=shots)
+                count = self.simulate(
+                    c_value=c_value,
+                    iterations=i,
+                    cloning=cloning,
+                    cloning_method=cloning_method,
+                    backend=backend,
+                    shots=shots
+                )
+
                 norm_shots = sum(count.values())  # should be equal to shots
                 success_prob = count[self._binary(self._k_value)] / norm_shots
                 confidence_int_95 = scipy.stats.norm.ppf(0.975) * \
