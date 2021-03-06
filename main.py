@@ -24,8 +24,8 @@ if __name__ == '__main__':
     print("least busy backend: ", backend)
     """
 
-    sim = CTCCircuitSimulator(size=2, k_value=2, cloning_size=7)
-    sim.test_convergence(c_value=0, start=1, stop=21, step=2, cloning="full")
+    sim = CTCCircuitSimulator(size=2, k_value=2, cloning_size=3)
+    sim.test_convergence(c_value=0, start=1, stop=15, step=1, cloning="full")
     """
     sim = CTCCircuitSimulator(size=2, k_value=2)
     counts = sim.simulate(c_value=1, iterations=6, cloning="no_cloning")

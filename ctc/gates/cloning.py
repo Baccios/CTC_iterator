@@ -5,7 +5,7 @@ from math import pi, sqrt
 
 import numpy as np
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 from qiskit import QuantumRegister
 from qiskit.circuit import Gate
@@ -17,7 +17,17 @@ class CloningGate(Gate):
     """
 
     @staticmethod
-    def _build_prep_gate():
+    def _build_prep_gate(method="uqcm"):
+        """
+        Build the preparation gate for two qubits
+
+        :param method: The cloning method to use:
+            <ul>
+                <li>"uqcm" (default): use the Universal Quantum Cloning Machine</li>
+                <li>"eqcm_xz": use cloning machine optimized for equatorial qubits on x-z plane</li>
+            </ul>
+        :return:
+        """
 
         # pylint: disable=cyclic-import
         from qiskit.circuit.quantumcircuit import QuantumCircuit
@@ -26,13 +36,21 @@ class CloningGate(Gate):
         prep_qr = QuantumRegister(2)
         prep_circuit = QuantumCircuit(prep_qr, name='prep')  # Create a quantum circuit with 2 qubits
 
-        # Define the rotation angles
-        theta1 = pi / 4.0
-        temp2 = (3.0 - 2.0 * sqrt(2)) / 6.0
-        arg2 = sqrt(temp2)
-        theta2 = - 2.0 * np.arcsin(arg2)
-        # print("THETA2 = ", theta2) # DEBUG
-        theta3 = pi / 4.0
+        if method == "eqcm_xz":
+            # Define the rotation angles
+            theta1 = sqrt(np.arcsin(0.5 + 1/sqrt(8)))*2
+            theta2 = - 2.0 * sqrt(np.arcsin(0.5 - sqrt(3)/4))
+            # print("THETA2 = ", theta2) # DEBUG
+            theta3 = theta1
+
+        else:  # method == "uqcm":
+            # Define the rotation angles
+            theta1 = pi / 4.0
+            temp2 = (3.0 - 2.0 * sqrt(2)) / 6.0
+            arg2 = sqrt(temp2)
+            theta2 = - 2.0 * np.arcsin(arg2)
+            # print("THETA2 = ", theta2) # DEBUG
+            theta3 = pi / 4.0
 
         prep_circuit.u(theta1, 0, 0, prep_qr[0])
         prep_circuit.cnot(prep_qr[0], prep_qr[1])
@@ -40,15 +58,33 @@ class CloningGate(Gate):
         prep_circuit.cnot(prep_qr[1], prep_qr[0])
         prep_circuit.u(theta3, 0, 0, prep_qr[0])
 
+        prep_circuit.draw(output="mpl")
+        plt.show()
+
         # Convert to a gate and stick it into an arbitrary place in the bigger circuit
         return prep_circuit.to_gate()
 
-    def __init__(self, num_qubits, label=None):
+    def __init__(self, num_qubits, method="uqcm", label=None):
+        """
+        Init a CloningGate
+
+        :param num_qubits: The number of qubits of the gate (must be odd)
+        :type num_qubits: int
+        :param method: The cloning method to use:
+            <ul>
+                <li>"uqcm" (default): use the Universal Quantum Cloning Machine</li>
+                <li>"eqcm_xz": use cloning machine optimized for equatorial qubits on x-z plane</li>
+            </ul>
+        :type method: str
+        :param label: the gate label (defaults to None)
+        :type label: str
+        """
 
         if (num_qubits % 2) != 1:
             raise ValueError("num_qubits must be odd.")
 
         self._num_qubits = num_qubits
+        self._method = method
 
         super().__init__('cloning', num_qubits, [], label)
 
@@ -59,7 +95,7 @@ class CloningGate(Gate):
         # pylint: disable=cyclic-import
         from qiskit.circuit.quantumcircuit import QuantumCircuit
 
-        self._prep_gate = self._build_prep_gate()
+        self._prep_gate = self._build_prep_gate(self._method)
 
         num_qubits = self._num_qubits
 

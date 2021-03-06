@@ -62,7 +62,7 @@ class CTCCircuitSimulator:
                 raise TypeError("parameter base_block must be a Gate")
             self._ctc_gate = base_block
 
-    def _build_dctr(self, iterations, cloning="no_cloning"):
+    def _build_dctr(self, iterations, cloning="no_cloning", cloning_method="eqcm_xz"):
         """
         Build the dctr circuit using instance initialization parameters (utility)
         :param iterations: The number of iterations to build
@@ -74,6 +74,12 @@ class CTCCircuitSimulator:
                         <li>"full": use cloning for each iteration
                     </ol>
         :type cloning: str
+        :param cloning_method: The cloning method to use:
+            <ul>
+                <li>"uqcm" (default): use the Universal Quantum Cloning Machine</li>
+                <li>"eqcm_xz": use cloning machine optimized for equatorial qubits on x-z plane</li>
+            </ul>
+        :type cloning_method: str
         :return: the full circuit ready to run.
         :rtype: qiskit.circuit.Instruction
         """
@@ -92,7 +98,7 @@ class CTCCircuitSimulator:
             dctr_circuit.add_register(clone_qubits)
             # initialize the cloning circuit
             dctr_circuit.append(init_gate, [clone_qubits[0]])
-            dctr_circuit.append(CloningGate(self._cloning_size), clone_qubits)
+            dctr_circuit.append(CloningGate(self._cloning_size, method=cloning_method), clone_qubits)
             # use the first clone to initialize psi
             dctr_circuit.swap(qubits[size], clone_qubits[1])
 
@@ -134,7 +140,7 @@ class CTCCircuitSimulator:
                     for qubit in clone_qubits:
                         dctr_circuit.reset(qubit)
                     dctr_circuit.append(init_gate, [clone_qubits[0]])
-                    dctr_circuit.append(CloningGate(self._cloning_size), clone_qubits)
+                    dctr_circuit.append(CloningGate(self._cloning_size, method=cloning_method), clone_qubits)
                     dctr_circuit.append(
                         self._get_iteration(psi_qubit=clone_qubits[1]), qubits[:] + clone_qubits[:]
                     )
@@ -283,15 +289,24 @@ class CTCCircuitSimulator:
               <li>
                 shots: The number of shots for the simulation. Defaults to 512
               </li>
+              <li>
+                cloning_method: the cloning method. Can be one of:
+                <ol>
+                    <li>"uqcm": use the Universal Quantum Cloning Machine</li>
+                    <li>"eqcm_xz (default)": use cloning machine optimized for equatorial qubits on x-z plane</li>
+                </ol>
+              </li>
             </ul>
         :return: The count list of results
         :rtype: dict
         """
         backend = params.get("backend", QasmSimulator())
         cloning = params.get("cloning", "no_cloning")
+        cloning_method = params.get("cloning_method", "eqcm_xz")
         shots = params.get("shots", 512)
 
-        dctr_simulation_circuit = self._build_simulator_circuit(c_value, iterations, cloning)
+        dctr_simulation_circuit = \
+            self._build_simulator_circuit(c_value, iterations, cloning=cloning, cloning_method=cloning_method)
 
         job = execute(dctr_simulation_circuit, backend, shots=shots)
 
@@ -305,7 +320,7 @@ class CTCCircuitSimulator:
         return counts
 
     def _build_simulator_circuit(self, c_value, iterations,
-                                 cloning="no_cloning", add_measurements=True):
+                                 cloning="no_cloning", cloning_method="eqcm_xz", add_measurements=True):
         """
         Build a dctr QuantumCircuit ready for a simulation (utility)
         :param c_value: the initial value for ancillary qubits
@@ -317,6 +332,12 @@ class CTCCircuitSimulator:
                         <li>"full": use cloning for each iteration
                     </ol>
         :type cloning: str
+        :param cloning_method: The cloning method to use:
+            <ul>
+                <li>"uqcm" (default): use the Universal Quantum Cloning Machine</li>
+                <li>"eqcm_xz": use cloning machine optimized for equatorial qubits on x-z plane</li>
+            </ul>
+        :type cloning_method: str
         :param add_measurements: if True, also adds measurements at the end of the circuit
         :type add_measurements: bool
         :return: The circuit ready to be executed
@@ -326,7 +347,7 @@ class CTCCircuitSimulator:
         if iterations <= 0:
             raise ValueError("parameter iterations must be greater than zero")
 
-        dctr_instr = self._build_dctr(iterations, cloning)
+        dctr_instr = self._build_dctr(iterations, cloning, cloning_method=cloning_method)
 
         # initialize the final circuit
         classical_bits = ClassicalRegister(self._size)
@@ -393,6 +414,13 @@ class CTCCircuitSimulator:
                 </ol>
               </li>
               <li>
+                cloning_method: the cloning method. Can be one of:
+                <ol>
+                    <li>"uqcm": use the Universal Quantum Cloning Machine</li>
+                    <li>"eqcm_xz (default)": use cloning machine optimized for equatorial qubits on x-z plane</li>
+                </ol>
+              </li>
+              <li>
                 backend: The backend to use, defaults to QasmSimulator()
               </li>
               <li>
@@ -403,6 +431,7 @@ class CTCCircuitSimulator:
         """
         cloning = params.get("cloning", "no_cloning")
         backend = params.get("backend", QasmSimulator())
+        cloning_method = params.get("cloning_method", "eqcm_xz")
         shots = params.get("shots", 1024)
 
         iterations = list(range(start, stop + 1, step))
@@ -412,8 +441,10 @@ class CTCCircuitSimulator:
         if isinstance(backend, IBMQBackend):
 
             print("Building the circuits to submit...")
-            circuits = \
-                [self._build_simulator_circuit(c_value, i, cloning=cloning) for i in iterations]
+            circuits = [
+                self._build_simulator_circuit(c_value, i, cloning=cloning, cloning_method=cloning_method)
+                for i in iterations
+            ]
 
             # Need to transpile the circuits first for optimization
             circuits = transpile(circuits, backend=backend)
