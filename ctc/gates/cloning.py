@@ -5,7 +5,7 @@ from math import pi, sqrt
 
 import numpy as np
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from qiskit import QuantumRegister
 from qiskit.circuit import Gate
@@ -38,7 +38,7 @@ class CloningGate(Gate):
 
         if method == "eqcm_xz":
             # Define the rotation angles
-            theta1 = sqrt(np.arcsin(0.5 + 1/sqrt(8)))*2
+            theta1 = sqrt(np.arcsin(0.5 - 1/sqrt(8)))*2.0
             theta2 = - 2.0 * sqrt(np.arcsin(0.5 - sqrt(3)/4))
             # print("THETA2 = ", theta2) # DEBUG
             theta3 = theta1
@@ -58,8 +58,8 @@ class CloningGate(Gate):
         prep_circuit.cnot(prep_qr[1], prep_qr[0])
         prep_circuit.u(theta3, 0, 0, prep_qr[0])
 
-        prep_circuit.draw(output="mpl")
-        plt.show()
+        # prep_circuit.draw(output="mpl")  # DEBUG
+        # plt.show()
 
         # Convert to a gate and stick it into an arbitrary place in the bigger circuit
         return prep_circuit.to_gate()
