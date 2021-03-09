@@ -407,6 +407,7 @@ class CTCCircuitSimulator:
         under an increasing number of iterations. Save the output plots in ./out
 
         :param c_value: The value for the ancillary qubits, either as binary string or integer
+                        Example: c_value="0111" is the same as c_value=5
         :type c_value: str, int
         :param start: the starting number of iterations
         :type start: int
@@ -450,6 +451,24 @@ class CTCCircuitSimulator:
         shots = params.get("shots", 1024)
 
         iterations = list(range(start, stop + 1, step))
+
+        probabilities, conf_intervals_95 = self._execute_convergence(
+            c_value,
+            iterations,
+            cloning=cloning,
+            backend=backend,
+            cloning_method=cloning_method,
+            shots=shots
+        )
+
+        self._plot_convergence(c_value, probabilities, conf_intervals_95, iterations)
+
+    def _execute_convergence(self, c_value, iterations, **params):
+
+        cloning = params.get("cloning", "no_cloning")
+        backend = params.get("backend", QasmSimulator())
+        cloning_method = params.get("cloning_method", "eqcm_xz")
+        shots = params.get("shots", 1024)
 
         # if the backend is an IBMQ,
         # we submit all circuits together to optimize waiting time using IBMQJobManager
@@ -502,14 +521,30 @@ class CTCCircuitSimulator:
                     shots=shots
                 )
 
+                stop = iterations[len(iterations) - 1]
+
+                print(
+                    "simulation ended: " + str(i) + " iterations (" + str(i) + "/" + str(stop) + ")"
+                )
+
                 norm_shots = sum(count.values())  # should be equal to shots
-                success_prob = count[self._binary(self._k_value)] / norm_shots
+
+                correct_key = self._binary(self._k_value)
+
+                if correct_key in count.keys():
+                    success_prob = count[correct_key] / norm_shots
+                else:
+                    success_prob = 0
+
                 confidence_int_95 = scipy.stats.norm.ppf(0.975) * \
                     sqrt(success_prob * (1 - success_prob) / norm_shots)
 
                 probabilities.append(success_prob)
                 conf_intervals_95.append(confidence_int_95)
 
+        return probabilities, conf_intervals_95
+
+    def _plot_convergence(self, c_value, probabilities, conf_intervals, iterations, output="out"):
         # select the first plot
         plt.figure(1)
 
@@ -525,7 +560,7 @@ class CTCCircuitSimulator:
             probabilities,
             color='blue',
             edgecolor='black',
-            yerr=conf_intervals_95,
+            yerr=conf_intervals,
             capsize=7,
             label='success probability'
         )
@@ -533,15 +568,15 @@ class CTCCircuitSimulator:
         plt.xticks(x_positions, iterations)
         plt.grid(axis='y', linestyle='--', linewidth=0.5)
 
-        if not os.path.exists('out'):
+        if not os.path.exists(output):
             try:
-                os.makedirs('out')
+                os.makedirs(output)
             except OSError as _:
-                print("Error: could not create \"./out\" directory")
+                print("Error: could not create \"" + output + "\" directory")
                 return
 
         # finally save the plot
-        image_basename = 'out/' + str(self._size) + '_convergence'
+        image_basename = output + '/' + str(self._size) + '_convergence'
         plt.savefig(image_basename + '_bar.png')
 
         # select the second plot
@@ -554,7 +589,7 @@ class CTCCircuitSimulator:
 
         # build log-log plot
         plt.errorbar(
-            iterations, probabilities, fmt='o', yerr=conf_intervals_95, label='success_probability'
+            iterations, probabilities, fmt='o', yerr=conf_intervals, label='success_probability'
         )
         plt.loglog(iterations, probabilities, color='blue')
         plt.xscale('log', base=2)

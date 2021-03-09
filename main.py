@@ -5,15 +5,15 @@
 import matplotlib.pyplot as plt
 
 from qiskit import IBMQ
-from qiskit.visualization import plot_histogram
+# from qiskit.visualization import plot_histogram
 
 from ctc.simulation import CTCCircuitSimulator
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
-    provider = IBMQ.load_account()
-    backend = provider.get_backend('ibmq_santiago')
+    # provider = IBMQ.load_account()
+    # backend = provider.get_backend('ibmq_santiago')
     """
     provider = IBMQ.get_provider(hub='ibm-q', group='open', project='main')
     backend = least_busy(provider.backends(
@@ -24,8 +24,8 @@ if __name__ == '__main__':
     print("least busy backend: ", backend)
     """
 
-    sim = CTCCircuitSimulator(size=2, k_value=2, cloning_size=3)
-    sim.test_convergence(c_value=0, start=1, stop=15, step=1, cloning="full")
+    sim = CTCCircuitSimulator(size=2, k_value=2)
+    sim.test_convergence(c_value=0, start=1, stop=11, step=2, cloning="no_cloning")
     """
     sim = CTCCircuitSimulator(size=2, k_value=2)
     counts = sim.simulate(c_value=1, iterations=6, cloning="no_cloning")
