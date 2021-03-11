@@ -9,6 +9,7 @@ from math import pi, sqrt
 import scipy.stats
 
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 
 from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister, execute, transpile
 from qiskit.circuit import Gate
@@ -56,7 +57,7 @@ class CTCCircuitSimulator:
         self._k_value = k_value
         self._cloning_size = cloning_size
         if base_block is None:
-            self._ctc_gate = CTCGate(2*size, method="v_gate", label="V Gate")
+            self._ctc_gate = CTCGate(2 * size, method="v_gate", label="V Gate")
         else:
             if not isinstance(base_block, Gate):
                 raise TypeError("parameter base_block must be a Gate")
@@ -69,7 +70,7 @@ class CTCCircuitSimulator:
         :type iterations: int
         :param cloning: can assume one of these values:
                     <ol>
-                        <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                        <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
                         <li>"initial": use cloning only for the first cloning_size iterations</li>
                         <li>"full": use cloning for each iteration
                     </ol>
@@ -257,25 +258,47 @@ class CTCCircuitSimulator:
         """
 
         if isinstance(c_value, int):
-            string_state = format(c_value, '0' + str(self._size) + 'b')
-        elif isinstance(c_value, str):
+            c_value = format(c_value, '0' + str(self._size) + 'b')
+        if isinstance(c_value, str):
             string_state = c_value
+            if (len(string_state) != self._size) or not self._check_binary(string_state):
+                raise ValueError("c string must be binary, e.g. \"10001\"")
+
+            for i, bit in enumerate(string_state):
+                if bit == '1':
+                    dctr_circuit.x(i)
+        elif isinstance(c_value, list):
+            # in this case c_value must be a list of state vectors
+            for i, state in enumerate(c_value):
+                if not isinstance(state, list):
+                    raise ValueError("c value was a list not containing state vectors lists")
+                dctr_circuit.append(Initialize(state), [dctr_circuit.qubits[i]])
         else:
-            raise TypeError("c value was not a string or an integer")
+            raise TypeError("c value was not a string, an integer or a list")
 
-        if (len(string_state) != self._size) or not self._check_binary(string_state):
-            raise ValueError("c string must be binary, e.g. \"10001\"")
+    @staticmethod
+    def _get_params(**params):
+        """
+        Utility method to initialize kwargs
+        """
+        cloning = params.get("cloning", "no_cloning")
+        backend = params.get("backend", QasmSimulator())
+        cloning_method = params.get("cloning_method", "eqcm_xz")
+        shots = params.get("shots", 1024)
 
-        for i, bit in enumerate(string_state):
-            if bit == '1':
-                dctr_circuit.x(i)
+        return cloning, backend, cloning_method, shots
 
     def simulate(self, c_value, iterations, **params):
         """
         Simulate a run of the CTC iterated circuit
 
-        :param c_value: The value for ancillary qubits. Must be between 0 and 2^size - 1
-        :type c_value: int, str
+        :param c_value: The value for the ancillary qubits, either as binary string or integer or list.
+                        If integer, must be between 0 and 2^size - 1.
+                        If string, must be a binary string with size digits
+                        Example: <code>c_value="0111"</code>
+                        is the same as <code>c_value=5</code> and
+                        <code>c_value=[[1,0],[0,1],[0,1],[0,1]]</code>
+        :type c_value: str, int, list
         :param iterations: the number of iterations to simulate
         :type iterations: int
         :param params:
@@ -284,7 +307,7 @@ class CTCCircuitSimulator:
               <li>
                 cloning: can assume one of these values:
                 <ol>
-                    <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                    <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
                     <li>"initial": use cloning only for the first cloning_size iterations</li>
                     <li>"full": use cloning for each iteration
                 </ol>
@@ -308,10 +331,8 @@ class CTCCircuitSimulator:
         :return: The count list of results
         :rtype: dict
         """
-        backend = params.get("backend", QasmSimulator())
-        cloning = params.get("cloning", "no_cloning")
-        cloning_method = params.get("cloning_method", "eqcm_xz")
-        shots = params.get("shots", 512)
+
+        cloning, backend, cloning_method, shots = self._get_params(**params)
 
         dctr_simulation_circuit = \
             self._build_simulator_circuit(
@@ -336,10 +357,12 @@ class CTCCircuitSimulator:
         """
         Build a dctr QuantumCircuit ready for a simulation (utility)
         :param c_value: the initial value for ancillary qubits
+        :type c_value: int, str, List[float]
         :param iterations: the number of iterations in the circuit
+        :type iterations: int
         :param cloning: can assume one of these values:
                     <ol>
-                        <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                        <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
                         <li>"initial": use cloning only for the first cloning_size iterations</li>
                         <li>"full": use cloning for each iteration
                     </ol>
@@ -406,9 +429,13 @@ class CTCCircuitSimulator:
         Test the convergence rate of the algorithm by simulating it
         under an increasing number of iterations. Save the output plots in ./out
 
-        :param c_value: The value for the ancillary qubits, either as binary string or integer
-                        Example: c_value="0111" is the same as c_value=5
-        :type c_value: str, int
+        :param c_value: The value for the ancillary qubits, either as binary string or integer or list.
+                        If integer, must be between 0 and 2^size - 1.
+                        If string, must be a binary string with size digits
+                        Example: <code>c_value="0111"</code>
+                        is the same as <code>c_value=5</code> and
+                        <code>c_value=[[1,0],[0,1],[0,1],[0,1]]</code>
+        :type c_value: str, int, list
         :param start: the starting number of iterations
         :type start: int
         :param stop: the final number of iterations
@@ -421,7 +448,7 @@ class CTCCircuitSimulator:
               <li>
                 cloning: can assume one of these values:
                 <ol>
-                    <li>"no_cloning": Do not use cloning to replicate psi state</li>
+                    <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
                     <li>"initial": use cloning only for the first cloning_size iterations</li>
                     <li>"full": use cloning for each iteration
                 </ol>
@@ -445,10 +472,7 @@ class CTCCircuitSimulator:
             </ul>
         :return: None
         """
-        cloning = params.get("cloning", "no_cloning")
-        backend = params.get("backend", QasmSimulator())
-        cloning_method = params.get("cloning_method", "eqcm_xz")
-        shots = params.get("shots", 1024)
+        cloning, backend, cloning_method, shots = self._get_params(**params)
 
         iterations = list(range(start, stop + 1, step))
 
@@ -550,8 +574,15 @@ class CTCCircuitSimulator:
 
         plt.ylabel('Probability')
         plt.xlabel('Iterations')
-        plt.title("Bar plot: n_qbits = " + str(self._size) +
-                  ", initial_state I" + self._binary(c_value) + ">")
+
+        if isinstance(c_value, int):
+            plt.title("Bar plot: n_qbits = " + str(self._size) +
+                      ", initial_state |" + self._binary(c_value) + "⟩")
+        elif isinstance(c_value, str):
+            plt.title("Bar plot: n_qbits = " + str(self._size) +
+                      ", initial_state |" + c_value + "⟩")
+        else:
+            plt.title("Bar plot: n_qbits = " + str(self._size))
 
         # build the bar plot
         x_positions = np.arange(len(probabilities))
@@ -584,8 +615,15 @@ class CTCCircuitSimulator:
 
         plt.ylabel('Probability')
         plt.xlabel('Iterations')
-        plt.title("Convergence log-log rate: n_qbits = " + str(self._size) +
-                  ", initial_state I" + self._binary(c_value) + ">")
+
+        if isinstance(c_value, int):
+            plt.title("Convergence log-log rate: n_qbits = " + str(self._size) +
+                      ", initial_state |" + self._binary(c_value) + "⟩")
+        elif isinstance(c_value, str):
+            plt.title("Convergence log-log rate: n_qbits = " + str(self._size) +
+                      ", initial_state |" + c_value + "⟩")
+        else:
+            plt.title("Convergence log-log rate: n_qbits = " + str(self._size))
 
         # build log-log plot
         plt.errorbar(
@@ -598,3 +636,122 @@ class CTCCircuitSimulator:
 
         # save also the second plot
         plt.savefig(image_basename + '_log.png')
+
+    def test_c_variability(self, c_values, start, stop, step=2, c_tick_labels=None, **params):
+        """
+        Test the convergence of the algorithm with different initial values of c.
+        Plots the outcome in a 3d bar plot.
+        Save the output plot in ./out
+
+        :param c_values: The values for the ancillary qubits, either as a list of
+                        binary string, integer or list.
+                        If integer, must be between 0 and 2^size - 1.
+                        If string, must be a binary string with size digits
+                        Example: <code>c_values=["0111", "1011"]</code>
+                        is the same as <code>c_value=[5, 11]</code> and
+                        <code>c_value=[[[1,0],[0,1],[0,1],[0,1]], [[0,1],[1,0],[0,1],[0,1]]]</code>
+        :type c_value: list
+        :param start: the starting number of iterations
+        :type start: int
+        :param stop: the final number of iterations
+        :type stop: int
+        :param step: the iterations increase step
+        :type step: int
+        :param c_tick_labels: labels to set to c values in the output plot
+        :type c_tick_labels: list
+        :param params:
+            List of accepted parameters:
+            <ul>
+              <li>
+                cloning: can assume one of these values:
+                <ol>
+                    <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
+                    <li>"initial": use cloning only for the first cloning_size iterations</li>
+                    <li>"full": use cloning for each iteration
+                </ol>
+              </li>
+              <li>
+                cloning_method: the cloning method. Can be one of:
+                <ol>
+                    <li>"uqcm": use the Universal Quantum Cloning Machine</li>
+                    <li>
+                        "eqcm_xz" (default):
+                        use cloning machine optimized for equatorial qubits on x-z plane
+                    </li>
+                </ol>
+              </li>
+              <li>
+                backend: The backend to use, defaults to QasmSimulator()
+              </li>
+              <li>
+                shots: The number of shots for the simulation. Defaults to 1024
+              </li>
+            </ul>
+        :return: None
+        """
+        cloning, backend, cloning_method, shots = self._get_params(**params)
+
+        iterations = list(range(start, stop + 1, step))
+
+        prob_matrix = []
+        conf_matrix = []
+
+        for c_value in c_values:
+            probabilities, conf_intervals_95 = self._execute_convergence(
+                c_value,
+                iterations,
+                cloning=cloning,
+                backend=backend,
+                cloning_method=cloning_method,
+                shots=shots
+            )
+            prob_matrix.append(probabilities)
+            conf_matrix.append(conf_intervals_95)
+
+        self._plot_convergence_3d(prob_matrix, iterations, c_tick_labels)
+
+    def _plot_convergence_3d(self, prob_matrix, iterations, c_tick_labels=None, output="out"):
+
+        y_names = iterations
+
+        if c_tick_labels is not None:  # if c names are set use them
+            x_names = c_tick_labels
+        else:  # otherwise use incremental integers
+            x_names = np.arange(0, len(prob_matrix), 1)
+
+        x_pos = np.arange(0, len(x_names), 1)
+        y_pos = np.arange(0, len(y_names), 1)
+        x_pos, y_pos = np.meshgrid(x_pos + 0.25, y_pos + 0.25)  # leave some space between bars
+        x_pos = x_pos.flatten()
+        y_pos = y_pos.flatten()
+        z_pos = np.zeros(len(x_names) * len(y_names))
+
+        bar_width = 0.5 * np.ones_like(z_pos)
+        bar_depth = 0.5 * np.ones_like(z_pos)
+        bar_height = np.array(prob_matrix).transpose().flatten()
+
+        fig = plt.figure()
+        ax = Axes3D(fig)
+
+        ax.bar3d(x_pos, y_pos, z_pos, bar_width, bar_depth, bar_height)
+
+        ax.w_xaxis.set_ticks(np.arange(0.5, len(x_names), 1))
+        ax.w_xaxis.set_ticklabels(x_names)
+        ax.w_yaxis.set_ticks(np.arange(0.5, len(y_names), 1))
+        ax.w_yaxis.set_ticklabels(y_names)
+        ax.set_ylabel('Iterations')
+        ax.set_xlabel('c values')
+        ax.set_zlabel('Probability')
+        ax.set_title("Convergence Bars: num_qbits= "
+                     + str(self._size) + ", |k⟩ = |" + self._binary(self._k_value) + "⟩", y=1.0)
+
+        # save the plot
+        if not os.path.exists(output):
+            try:
+                os.makedirs(output)
+            except OSError as _:
+                print("Error: could not create \"" + output + "\" directory")
+                return
+        output_file = output + "/c_3d_bar_" + str(self._size) +\
+            "_qbits_k=" + self._binary(self._k_value) + ".png"
+        plt.savefig(output_file)
