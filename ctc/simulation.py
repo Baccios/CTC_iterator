@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 # from ctc.block_generator import get_ctc_assisted_circuit
 from ctc.gates.cloning import CloningGate
 from ctc.gates.ctc_assisted import CTCGate
+from ctc.gates.p_gate import PGate
 
 
 class CTCCircuitSimulator:
@@ -273,6 +274,12 @@ class CTCCircuitSimulator:
                 if not isinstance(state, list):
                     raise ValueError("c value was a list not containing state vectors lists")
                 dctr_circuit.append(Initialize(state), [dctr_circuit.qubits[i]])
+
+        elif isinstance(c_value, float):
+            p_gate = PGate(c_value)
+            # in this case c_value must be a probability
+            for i in range(self._size):
+                dctr_circuit.append(p_gate, [dctr_circuit.qubits[i]])
         else:
             raise TypeError("c value was not a string, an integer or a list")
 
@@ -292,13 +299,15 @@ class CTCCircuitSimulator:
         """
         Simulate a run of the CTC iterated circuit
 
-        :param c_value: The value for the ancillary qubits, either as binary string or integer or list.
+        :param c_value: The value for the ancillary qubits, either as binary string or integer, list or float.
                         If integer, must be between 0 and 2^size - 1.
                         If string, must be a binary string with size digits
+                        If float, it must be the probability of reading zero, and c state will
+                        be sqrt(c_value)|0⟩ + sqrt(1 - c_value)|1⟩
                         Example: <code>c_value="0111"</code>
                         is the same as <code>c_value=5</code> and
                         <code>c_value=[[1,0],[0,1],[0,1],[0,1]]</code>
-        :type c_value: str, int, list
+        :type c_value: str, int, list, float
         :param iterations: the number of iterations to simulate
         :type iterations: int
         :param params:
@@ -357,7 +366,7 @@ class CTCCircuitSimulator:
         """
         Build a dctr QuantumCircuit ready for a simulation (utility)
         :param c_value: the initial value for ancillary qubits
-        :type c_value: int, str, List[float]
+        :type c_value: int, str, list, float
         :param iterations: the number of iterations in the circuit
         :type iterations: int
         :param cloning: can assume one of these values:
@@ -429,13 +438,15 @@ class CTCCircuitSimulator:
         Test the convergence rate of the algorithm by simulating it
         under an increasing number of iterations. Save the output plots in ./out
 
-        :param c_value: The value for the ancillary qubits, either as binary string or integer or list.
+        :param c_value: The value for the ancillary qubits, either as binary string or integer, list or float.
                         If integer, must be between 0 and 2^size - 1.
                         If string, must be a binary string with size digits
+                        If float, it must be the probability of reading zero, and c state will
+                        be sqrt(c_value)|0⟩ + sqrt(1 - c_value)|1⟩
                         Example: <code>c_value="0111"</code>
                         is the same as <code>c_value=5</code> and
                         <code>c_value=[[1,0],[0,1],[0,1],[0,1]]</code>
-        :type c_value: str, int, list
+        :type c_value: str, int, list, float
         :param start: the starting number of iterations
         :type start: int
         :param stop: the final number of iterations
@@ -643,14 +654,15 @@ class CTCCircuitSimulator:
         Plots the outcome in a 3d bar plot.
         Save the output plot in ./out
 
-        :param c_values: The values for the ancillary qubits, either as a list of
-                        binary string, integer or list.
+        :param c_value: The value for the ancillary qubits, either as binary string or integer, list or float.
                         If integer, must be between 0 and 2^size - 1.
                         If string, must be a binary string with size digits
-                        Example: <code>c_values=["0111", "1011"]</code>
-                        is the same as <code>c_value=[5, 11]</code> and
-                        <code>c_value=[[[1,0],[0,1],[0,1],[0,1]], [[0,1],[1,0],[0,1],[0,1]]]</code>
-        :type c_value: list
+                        If float, it must be the probability of reading zero, and c state will
+                        be sqrt(c_value)|0⟩ + sqrt(1 - c_value)|1⟩
+                        Example: <code>c_value="0111"</code>
+                        is the same as <code>c_value=5</code> and
+                        <code>c_value=[[1,0],[0,1],[0,1],[0,1]]</code>
+        :type c_value: str, int, list, float
         :param start: the starting number of iterations
         :type start: int
         :param stop: the final number of iterations
@@ -686,10 +698,14 @@ class CTCCircuitSimulator:
               <li>
                 shots: The number of shots for the simulation. Defaults to 1024
               </li>
+              <li>
+                plot_d: the number of dimensions of the plot. Can be 2 or 3
+              </li>
             </ul>
         :return: None
         """
         cloning, backend, cloning_method, shots = self._get_params(**params)
+        plot_d = params.get("plot_d", 2)
 
         iterations = list(range(start, stop + 1, step))
 
@@ -708,9 +724,12 @@ class CTCCircuitSimulator:
             prob_matrix.append(probabilities)
             conf_matrix.append(conf_intervals_95)
 
-        self._plot_convergence_3d(prob_matrix, iterations, c_tick_labels)
+        if plot_d == 3:
+            self._plot_c_variability_3d(prob_matrix, iterations, c_tick_labels)
+        else:
+            self._plot_c_variability_2d(prob_matrix, iterations, c_tick_labels)
 
-    def _plot_convergence_3d(self, prob_matrix, iterations, c_tick_labels=None, output="out"):
+    def _plot_c_variability_3d(self, prob_matrix, iterations, c_tick_labels=None, output="out"):
 
         y_names = iterations
 
@@ -753,5 +772,33 @@ class CTCCircuitSimulator:
                 print("Error: could not create \"" + output + "\" directory")
                 return
         output_file = output + "/c_3d_bar_" + str(self._size) +\
+            "_qbits_k=" + self._binary(self._k_value) + ".png"
+        plt.savefig(output_file)
+
+    def _plot_c_variability_2d(self, prob_matrix, iterations, c_tick_labels=None, output="out"):
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k']
+
+        width = (2/len(prob_matrix))*(iterations[len(iterations) - 1])/17
+
+        x_pos = np.array([iterations[i] + width*i for i in range(0, len(iterations))])
+
+        rects = [ax.bar(x_pos + width*i, series, width=width, color=colors[i % len(colors)])[0]
+                 for i, series in enumerate(prob_matrix)]
+
+        if c_tick_labels is not None:
+            ax.legend(rects, c_tick_labels)
+
+        ax.set_ylabel("Success probability")
+        ax.set_xlabel("Iterations")
+        ax.set_xticks(x_pos + (width*len(prob_matrix)/2) - 0.5*width)
+        ax.set_xticklabels(iterations)
+        ax.set_title("Convergence Bars: num_qbits= "
+                     + str(self._size) + ", |k⟩ = |" + self._binary(self._k_value) + "⟩")
+
+        output_file = output + "/c_2d_bar_" + str(self._size) + \
             "_qbits_k=" + self._binary(self._k_value) + ".png"
         plt.savefig(output_file)
