@@ -35,8 +35,8 @@ class CloningGate(Gate):
 
         if method == "eqcm_xz":
             # Define the rotation angles
-            theta1 = sqrt(np.arcsin(0.5 - 1/sqrt(8)))*2.0
-            theta2 = - 2.0 * sqrt(np.arcsin(0.5 - sqrt(3)/4))
+            theta1 = np.arcsin(sqrt(0.5 - 1/sqrt(8)))*2.0
+            theta2 = 0
             # print("THETA2 = ", theta2) # DEBUG
             theta3 = theta1
 

@@ -94,7 +94,7 @@ class CTCCircuitSimulator:
         dctr_circuit = QuantumCircuit(qubits)
 
         if cloning == "no_cloning":
-            # initialize the first of CTC qubits with psi
+            # initialize the first of CR qubits with psi
             dctr_circuit.append(init_gate, [qubits[size]])
         else:
             dctr_circuit.add_register(clone_qubits)
@@ -166,6 +166,8 @@ class CTCCircuitSimulator:
         # dctr_circuit.draw(output="mpl")  # DEBUG
         # plt.show()
 
+        # print("REQUIRED " + str(len(dctr_circuit.qubits)))  # DEBUG
+
         return dctr_circuit.to_instruction()
 
     def _get_psi_init(self):
@@ -213,12 +215,12 @@ class CTCCircuitSimulator:
             iter_circuit.swap(qubits[i], qubits[size + i])
 
         iter_circuit.barrier()
-
-        # reset CTC qubits
+        
+        # reset CR qubits
         for i in range(size, 2 * size):
             iter_circuit.reset(i)
 
-        # initialize the first CTC gate
+        # initialize the first CTC assisted gate
         if psi_qubit is None:
             iter_circuit.append(init_gate, [qubits[size]])
         else:
@@ -395,7 +397,12 @@ class CTCCircuitSimulator:
 
         # initialize the final circuit
         classical_bits = ClassicalRegister(self._size)
-        qubits = QuantumRegister(self._size * 2)
+
+        num_qubits = dctr_instr.num_qubits
+        if cloning != "no_cloning":
+            num_qubits -= self._cloning_size
+
+        qubits = QuantumRegister(num_qubits)
 
         dctr_simulation_circuit = QuantumCircuit(qubits, classical_bits)
 
@@ -404,6 +411,9 @@ class CTCCircuitSimulator:
             dctr_simulation_circuit.add_register(clone_qubits)
             # initialize ancillary qubits
             self._initialize_c_state(c_value, dctr_simulation_circuit)
+
+            # print("GIVEN " + str(len(qubits[:] + clone_qubits[:])))  # DEBUG
+
             dctr_simulation_circuit.append(dctr_instr, qubits[:] + clone_qubits[:])
 
         else:
@@ -577,6 +587,11 @@ class CTCCircuitSimulator:
                 probabilities.append(success_prob)
                 conf_intervals_95.append(confidence_int_95)
 
+                print(
+                    "   -> probability = ",  success_prob,  " +- ",  confidence_int_95
+                )
+                print()
+
         return probabilities, conf_intervals_95
 
     def _plot_convergence(self, c_value, probabilities, conf_intervals, iterations, output="out"):
@@ -586,14 +601,24 @@ class CTCCircuitSimulator:
         plt.ylabel('Probability')
         plt.xlabel('Iterations')
 
+        title = "Bar plot: n_bits = " + str(self._size)
+        filename = str(self._size) + "_"
+
         if isinstance(c_value, int):
-            plt.title("Bar plot: n_qbits = " + str(self._size) +
-                      ", initial_state |" + self._binary(c_value) + "⟩")
+            title += ", initial_state |" + self._binary(c_value) + "⟩"
+            filename += "initial_" + self._binary(c_value)
         elif isinstance(c_value, str):
-            plt.title("Bar plot: n_qbits = " + str(self._size) +
-                      ", initial_state |" + c_value + "⟩")
-        else:
-            plt.title("Bar plot: n_qbits = " + str(self._size))
+            title += ", initial_state |" + c_value + "⟩"
+            filename += "initial_" + c_value
+
+        if isinstance(self._k_value, int):
+            title += ", target |" + self._binary(self._k_value) + "⟩"
+            filename += "_target_" + self._binary(self._k_value)
+        elif isinstance(self._k_value, str):
+            title += ", target |" + self._k_value + "⟩"
+            filename += "_target_" + self._k_value
+
+        plt.title(title)
 
         # build the bar plot
         x_positions = np.arange(len(probabilities))
@@ -618,8 +643,9 @@ class CTCCircuitSimulator:
                 return
 
         # finally save the plot
-        image_basename = output + '/' + str(self._size) + '_convergence'
-        plt.savefig(image_basename + '_bar.png')
+        image_basename = output + '/' + filename
+        plt.savefig(image_basename + '_bar.pdf')
+        plt.close()
 
         # select the second plot
         plt.figure(2)
@@ -646,7 +672,9 @@ class CTCCircuitSimulator:
         plt.grid()
 
         # save also the second plot
-        plt.savefig(image_basename + '_log.png')
+        plt.savefig(image_basename + '_log.pdf')
+        plt.close()
+
 
     def test_c_variability(self, c_values, start, stop, step=2, c_tick_labels=None, **params):
         """
@@ -772,8 +800,9 @@ class CTCCircuitSimulator:
                 print("Error: could not create \"" + output + "\" directory")
                 return
         output_file = output + "/c_3d_bar_" + str(self._size) +\
-            "_qbits_k=" + self._binary(self._k_value) + ".png"
+            "_qbits_k=" + self._binary(self._k_value) + ".pdf"
         plt.savefig(output_file)
+        plt.close()
 
     def _plot_c_variability_2d(self, prob_matrix, iterations, c_tick_labels=None, output="out"):
 
@@ -796,9 +825,10 @@ class CTCCircuitSimulator:
         ax.set_xlabel("Iterations")
         ax.set_xticks(x_pos + (width*len(prob_matrix)/2) - 0.5*width)
         ax.set_xticklabels(iterations)
-        ax.set_title("Convergence Bars: num_qbits= "
+        ax.set_title("Convergence Bars: num_bits= "
                      + str(self._size) + ", |k⟩ = |" + self._binary(self._k_value) + "⟩")
 
         output_file = output + "/c_2d_bar_" + str(self._size) + \
-            "_qbits_k=" + self._binary(self._k_value) + ".png"
+            "_bits_k=" + self._binary(self._k_value) + ".pdf"
         plt.savefig(output_file)
+        plt.close()

@@ -45,6 +45,48 @@ def _generate_v_circuit(size):
     return ctc_circuit
 
 
+def _generate_v_circuit_momentum(size):
+    """
+    Get a CTC gate using the algorithm in
+    <a href="https://arxiv.org/abs/1901.00379">this article</a>
+
+    :param size: Size (in qubits) of the gate instance
+    :type size: int
+    :return: the CTC gate
+    :rtype: qiskit.circuit.QuantumCircuit
+    """
+    # build the V sub circuit
+    ctc_circuit = QuantumCircuit(3 * size, name='MV Gate')
+
+    # ### R block (1)
+
+    for i in range(size):
+        ctc_circuit.cu(-pi / 2 ** (i+1), 0, 0, 0, i, 2*size)
+
+    # ### R block (2)
+
+    for i in range(size):
+        ctc_circuit.cu(-pi / 2 ** (i+1), 0, 0, 0, size + i, 2*size)
+
+    # ### T block
+
+    for i in range(2*size + 1, 3 * size):
+        ctc_circuit.ch(2*size, i)
+
+    # ### W block
+
+    for i in range(2*size + 1, 3 * size):
+        ctc_circuit.cu(pi / size, 0, 0, 0, i, 2*size)
+
+    # ### C block
+
+    for i in range(size):
+        ctc_circuit.cnot(size + i, 2*size + i)
+
+    # return the result
+    return ctc_circuit
+
+
 def get_ctc_assisted_circuit(size, method="v_gate"):
     """
     Get a CTC gate specifying its size and (optionally) the method used to build it.
@@ -69,3 +111,30 @@ def get_ctc_assisted_circuit(size, method="v_gate"):
     if method != "v_gate":
         raise ValueError("method must be set to one of the specified values")
     return _generate_v_circuit(size)
+
+
+def get_ctc_assisted_circuit_mom(size, method="v_gate"):
+    """
+    Get a Momentum CTC gate specifying its size and (optionally) the method used to build it.
+
+    :param size: The size (in qubits) of the gate.
+                 The resulting gate will have 3*size qubits because
+                 the first half represents the CTC
+                 and the second half represents the Chronology Respecting (CR) system.
+    :type size: int
+    :param method: the algorithm used to build the gate. It defaults to "v_gate".
+                   Possible values are:
+                    <ol>
+                        <li>"v_gate": use the algorithm in
+                            <a href="https://arxiv.org/abs/1901.00379">this article</a>
+                        </li>
+                    </ol>
+    :type method: str
+    :return: the CTC gate
+    :rtype: qiskit.circuit.QuantumCircuit
+    """
+
+    # Other methods are left for future updates
+    if method != "v_gate":
+        raise ValueError("method must be set to one of the specified values")
+    return _generate_v_circuit_momentum(size)

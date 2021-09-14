@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 
 from qiskit import IBMQ
 # from qiskit.visualization import plot_histogram
+from qiskit.providers.ibmq import least_busy
 
 from ctc.simulation import CTCCircuitSimulator
 from math import sqrt
+import time
 
 
 # Press the green button in the gutter to run the script.
@@ -16,31 +18,53 @@ if __name__ == '__main__':
 
     # provider = IBMQ.load_account()
     # backend = provider.get_backend('ibmq_santiago')
-    """
+
+    IBMQ.load_account()
     provider = IBMQ.get_provider(hub='ibm-q', group='open', project='main')
+    backend = provider.get_backend('ibmq_lima')
+    """
     backend = least_busy(provider.backends(
                                         filters=lambda x: x.configuration().n_qubits >= 4
                                         and not x.configuration().simulator
                                         and x.status().operational is True
                                         and 'reset' in x.configuration().supported_instructions))
+    """
     print("least busy backend: ", backend)
     """
 
-    c_values_2bit = [0.25, 0.5, 0.75]
+    
+    c_values_2bit = ["01", 0.5]
 
-    c_tick_labels_2bits = ["p=0.25", "p=0.5", "p=0.75"]
+    c_tick_labels_2bits = ["|c⟩=|01⟩", "|c⟩=|++⟩"]
 
     c_tics_cbs_vs_h = ["|0001⟩", "|++++⟩", "|0+++⟩", "|00++⟩", "|000+⟩", "|1000⟩"]
 
-    sim = CTCCircuitSimulator(size=4, k_value=1)
-    sim.test_c_variability(c_values_2bit, 1, 181, 20, c_tick_labels=c_tick_labels_2bits)
+    sim = CTCCircuitSimulator(size=2, k_value=3)
+    start = time.time()
+    sim.test_c_variability(c_values_2bit, 1, 21, 2, c_tick_labels=c_tick_labels_2bits, plot_d=2)
+    end = time.time()
+    print("elapsed time = ", end-start, "s")
     """
-    sim.test_convergence(c_value=c_value, start=1, stop=11, step=2, cloning="no_cloning")
-    sim = CTCCircuitSimulator(size=2, k_value=2)
-    counts = sim.simulate(c_value=1, iterations=6, cloning="no_cloning")
-
-    plot_histogram(counts)
-    plt.show()
+    sim = CTCCircuitSimulator(size=2, k_value=3, cloning_size=3)
+    start = time.time()
+    sim.test_convergence(c_value=1, start=1, stop=21, step=2, cloning="no_cloning", backend=backend)
+    end = time.time()
+    print("elapsed time = ", end-start, "s")
     """
 
+    c_values = ["0000", "0110", "1001", "1111"]
+    k_values = [1, 7, 8, 14]
+    times = []
+
+    for c in c_values:
+        for k in k_values:
+            sim = CTCCircuitSimulator(size=4, k_value=k, cloning_size=3)
+            start = time.time()
+            sim.test_convergence(c_value=c, start=1, stop=361, step=30, cloning="no_cloning")
+            end = time.time()
+            times.append(end-start)
+            print("elapsed time = ", end - start, "s")
+
+    print("Execution times = ", times)
+    """
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

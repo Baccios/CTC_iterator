@@ -4,7 +4,7 @@ This module implements a Deutschian CTC gate
 
 from qiskit.circuit import Gate
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 
 class CTCGate(Gate):
