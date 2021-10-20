@@ -11,7 +11,7 @@ import scipy.stats
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
-from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister, execute, transpile
+from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister, execute, transpile, assemble
 from qiskit.circuit import Gate
 from qiskit.extensions import Initialize
 from qiskit.providers.aer import QasmSimulator
@@ -34,7 +34,7 @@ class CTCCircuitSimulator:
     simulation of a CTC assisted iterated circuit.
     """
 
-    def __init__(self, size, k_value, cloning_size=7, base_block=None):
+    def __init__(self, size, k_value, cloning_size=7, ctc_recipe="nbp", base_block=None):
         """
         Initialize the simulator with a set of parameters.
 
@@ -42,8 +42,23 @@ class CTCCircuitSimulator:
         :type size: int
         :param k_value: The value for k, must be lower than 2^size
         :type k_value: int
-        :param base_block: The gate to be used as basic block. When not specified,
-                the class will use a default one using ctc.block_generator.get_ctc_assisted_gate
+        :param ctc_recipe: the recipe used to build the ctc assisted gate. It defaults to "nbp".
+                   Possible values are:
+                    <ol>
+                        <li>"nbp": use the algorithm in
+                            <a href="https://arxiv.org/abs/1901.00379">this article</a> (default value)
+                        </li>
+                        <li>"brun": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a>
+                        </li>
+                        <li>"brun_fig2": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a> in the variant for Fig.2.
+                            (Note that this case is only limited to 2 bits)
+                        </li>
+                    </ol>
+        :type ctc_recipe: str
+        :param base_block: The explicit gate to be used as basic block. When not specified,
+                the gate will be built using the recipe specified in parameter ctc_recipe.
         :type base_block: qiskit.circuit.Gate
         :param cloning_size: the size of the internal CloningGate
         :type cloning_size: int
@@ -57,8 +72,9 @@ class CTCCircuitSimulator:
         self._size = size
         self._k_value = k_value
         self._cloning_size = cloning_size
+        self._ctc_recipe = ctc_recipe
         if base_block is None:
-            self._ctc_gate = CTCGate(2 * size, method="v_gate", label="V Gate")
+            self._ctc_gate = CTCGate(2 * size, method=ctc_recipe, label="V Gate")
         else:
             if not isinstance(base_block, Gate):
                 raise TypeError("parameter base_block must be a Gate")
@@ -177,11 +193,29 @@ class CTCCircuitSimulator:
         :rtype: qiskit.circuit.Gate
         """
 
-        # encode k in a state |ψ⟩ = cos(kπ/2^n)|0⟩ + sin(kπ/2^n)|1⟩
-        psi = [
-            math.cos((self._k_value * pi) / 2 ** self._size),
-            math.sin((self._k_value * pi) / 2 ** self._size)
-        ]
+        # first treat the alternative encoding for Brun (Fig 2 case):
+        if self._ctc_recipe == "brun_fig2":
+            if self._k_value == 0:
+                psi = [1, 0]
+            elif self._k_value == 1:
+                psi = [0, 1]
+            elif self._k_value == 2:
+                psi = [
+                    math.cos(pi/4),
+                    math.sin(pi/4)
+                ]
+            elif self._k_value == 3:
+                psi = [
+                    math.cos(3*pi/4),
+                    math.sin(3*pi/4)
+                ]
+
+        else:
+            # encode k in a state |ψ⟩ = cos(kπ/2^n)|0⟩ + sin(kπ/2^n)|1⟩
+            psi = [
+                math.cos((self._k_value * pi) / 2 ** self._size),
+                math.sin((self._k_value * pi) / 2 ** self._size)
+            ]
 
         # print("k = ", self.__k_value, ", psi is encoded as: ", psi)  # DEBUG
 
@@ -350,7 +384,11 @@ class CTCCircuitSimulator:
                 c_value, iterations, cloning=cloning, cloning_method=cloning_method
             )
 
-        job = execute(dctr_simulation_circuit, backend, shots=shots)
+        # print("I'm about to execute ", iterations, " iterations...")  # DEBUG
+        job = execute(dctr_simulation_circuit, backend, shots=shots, optimization_level=0)
+        # circ = transpile(dctr_simulation_circuit, backend=backend, optimization_level=0)
+        # my_qobj = assemble(circ)
+        # job = backend.run(my_qobj, shots=shots)
 
         # job_monitor(job) # DEBUG
 

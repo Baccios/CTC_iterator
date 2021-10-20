@@ -13,18 +13,25 @@ class CTCGate(Gate):
     The first half qubits represent the CTC state, the second half the time dependent system.
     """
 
-    def __init__(self, num_qubits, method="v_gate", label=None):
+    def __init__(self, num_qubits, method="nbp", label=None):
         """
 
         :param num_qubits: The size (in qubits) of the gate. It must be even.
                  the first half represents the CTC
                  and the second half represents the Chronology Respecting (CR) system.
         :type num_qubits: int
-        :param method: the algorithm used to build the gate. It defaults to "v_gate".
+        :param method: the recipe used to build the ctc assisted gate. It defaults to "nbp".
                    Possible values are:
                     <ol>
-                        <li>"v_gate": use the algorithm in
-                            <a href="https://arxiv.org/abs/1901.00379">this article</a>
+                        <li>"nbp": use the algorithm in
+                            <a href="https://arxiv.org/abs/1901.00379">this article</a> (default value)
+                        </li>
+                        <li>"brun": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a>
+                        </li>
+                        <li>"brun_fig2": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a> in the variant for Fig.2.
+                            (Note that this case is only limited to 2 bits)
                         </li>
                     </ol>
         :type method: str
@@ -48,7 +55,7 @@ class CTCGate(Gate):
 
         ctc_circuit = get_ctc_assisted_circuit(int(self._num_qubits / 2), method=self._method)
 
-        # cloning_circuit.draw(output="mpl")  # DEBUG
+        # ctc_circuit.draw(output="mpl")  # DEBUG
         # plt.show()
 
         self.definition = ctc_circuit
