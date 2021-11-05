@@ -1,7 +1,7 @@
 """
 This module implements a Deutschian CTC gate
 """
-
+from qiskit import transpile, Aer
 from qiskit.circuit import Gate
 
 import matplotlib.pyplot as plt

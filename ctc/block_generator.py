@@ -94,13 +94,19 @@ def _generate_v_circuit_brun_fig2(size=2):
     return ctc_circuit
 
 
-def _generate_v_circuit_brun(size):
+def _generate_v_circuit_brun(size, two_dim=True, section_divider=None):
     """
     Get a CTC gate using the general recipe in
     <a href="https://arxiv.org/abs/0811.1209">this article</a>
 
     :param size: Size (in qubits) of the gate instance
     :type size: int
+    :param two_dim: if set to True, the encoding considered is |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>, otherwise
+    it is the 3d encoding scheme. Defaults to True.
+    :type two_dim: bool
+    :param section_divider: If two_dim is True, the statevector representation will be
+    |psi_k> = cos(k*pi/sector_divider)|0> + sin(k*pi/sector_divider)|1>. If None, it will be considered as 2^size.
+    :type section_divider: int
     :return: the CTC gate
     :rtype: qiskit.circuit.QuantumCircuit
     """
@@ -112,54 +118,12 @@ def _generate_v_circuit_brun(size):
     ctc_circuit = QuantumCircuit(qr, name="V_gate")
 
     for k in range(2**size):
-        u_k = UnitaryGate(get_u_qiskit(k, size), label="U_" + get_str(k))
+        u_k = UnitaryGate(get_u_qiskit(k, size, two_dim, section_divider), label="U_" + get_str(k))
         cu_k = u_k.control(size, label="CU_" + get_str(k), ctrl_state=get_str(k)[::-1])
         # print("Straight ", k, " = ", get_str(k))
         # print("Reverse ", k, " = ", get_str(k)[::-1])  # DEBUG
         ctc_circuit.append(cu_k, qr[0:2**size])
 
-    return ctc_circuit
-
-
-def _generate_v_circuit_momentum(size):
-    """
-    Get a CTC gate using the algorithm in
-    <a href="https://arxiv.org/abs/1901.00379">this article</a>
-
-    :param size: Size (in qubits) of the gate instance
-    :type size: int
-    :return: the CTC gate
-    :rtype: qiskit.circuit.QuantumCircuit
-    """
-    # build the V sub circuit
-    ctc_circuit = QuantumCircuit(3 * size, name='MV Gate')
-
-    # ### R block (1)
-
-    for i in range(size):
-        ctc_circuit.cu(-pi / 2 ** (i+1), 0, 0, 0, i, 2*size)
-
-    # ### R block (2)
-
-    for i in range(size):
-        ctc_circuit.cu(-pi / 2 ** (i+1), 0, 0, 0, size + i, 2*size)
-
-    # ### T block
-
-    for i in range(2*size + 1, 3 * size):
-        ctc_circuit.ch(2*size, i)
-
-    # ### W block
-
-    for i in range(2*size + 1, 3 * size):
-        ctc_circuit.cu(pi / size, 0, 0, 0, i, 2*size)
-
-    # ### C block
-
-    for i in range(size):
-        ctc_circuit.cnot(size + i, 2*size + i)
-
-    # return the result
     return ctc_circuit
 
 
@@ -173,12 +137,7 @@ def get_ctc_assisted_circuit(size, method="nbp"):
                  and the second half represents the Chronology Respecting (CR) system.
     :type size: int
     :param method: the algorithm used to build the gate. It defaults to "nbp".
-                   Possible values are:
-                    <ol>
-                        <li>"nbp": use the algorithm in
-                            <a href="https://arxiv.org/abs/1901.00379">this article</a>
-                        </li>
-                    </ol>
+    for a list of possible values refer to simulation.CTCCircuitSimulator documentation
     :type method: str
     :return: the CTC gate
     :rtype: qiskit.circuit.QuantumCircuit
@@ -190,32 +149,9 @@ def get_ctc_assisted_circuit(size, method="nbp"):
         return _generate_v_circuit_brun_fig2(size)
     elif method == "brun":
         return _generate_v_circuit_brun(size)
+    elif method == "brun_3d":
+        return _generate_v_circuit_brun(size, two_dim=False)
+    elif method == "brun_quadrant":
+        return _generate_v_circuit_brun(size, two_dim=True, section_divider=2**(size + 2))
     else:
         raise ValueError("method must be set to one of the specified values")
-
-
-def get_ctc_assisted_circuit_mom(size, method="nbp"):
-    """
-    Get a Momentum CTC gate specifying its size and (optionally) the method used to build it.
-
-    :param size: The size (in qubits) of the gate.
-                 The resulting gate will have 3*size qubits because
-                 the first half represents the CTC
-                 and the second half represents the Chronology Respecting (CR) system.
-    :type size: int
-    :param method: the algorithm used to build the gate. It defaults to "v_gate".
-                   Possible values are:
-                    <ol>
-                        <li>"v_gate": use the algorithm in
-                            <a href="https://arxiv.org/abs/1901.00379">this article</a>
-                        </li>
-                    </ol>
-    :type method: str
-    :return: the CTC gate
-    :rtype: qiskit.circuit.QuantumCircuit
-    """
-
-    # Other methods are left for future updates
-    if method != "nbp":
-        raise ValueError("Momentum variation has been implemented only for nbp method.")
-    return _generate_v_circuit_momentum(size)

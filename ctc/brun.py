@@ -4,54 +4,30 @@ This module implements the utilities required for the recipe in
 """
 
 import math
-from math import pi
 import numpy as np
 
+from ctc.encodings import get_2d_code, get_3d_code, get_psi_with_ancillas
 
-def get_psi_statevector(k_value, num_bits):
+
+def create_set(num_bits, two_dim=True, section_divider=None):
     """
-    Returns an array containing the statevector representation of |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>
-
-    :param k_value: The value of the parameter k
-    :param num_bits: The number of bits on which k is encoded
-    :return: The numpy array containing the statevector representation of |psi>
-    """
-    angle = pi * k_value / 2 ** num_bits
-    if k_value == 2 ** (num_bits - 1):  # optimization
-        psi_vector = np.array([0., 1.])
-    else:
-        psi_vector = np.array([math.cos(angle), math.sin(angle)])
-    return psi_vector
-
-
-def get_psi_with_ancillas(psi_vector, num_qubits):
-    """
-    Appends to the statevector psi a number num_qubits - 1 of ancillary qubit states all set to |0>.
-
-    :param psi_vector: The numpy array containing psi state in statevector representation.
-    :param num_qubits: The total number of qubits the final state vector is composed of.
-    :return: A numpy array containing the statevector representation of the state |psi>|0>|0>...|0>
-    """
-    ancillas_state = np.zeros(2**(num_qubits - 1))
-    ancillas_state[0] = 1.
-    psi_with_ancillas = np.tensordot(psi_vector, ancillas_state, axes = 0).reshape(1, 2**num_qubits)
-
-    # print(psi_with_ancillas) # DEBUG
-    return psi_with_ancillas
-
-
-def create_set(num_bits):
-    """
-    Given the encoding |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>, Returns a list of state vectors of all possible
+    Returns a list of state vectors of all possible
     values for k, numerically ordered. Each state is already filled with ancillary qubits all set to |0>.
 
     :param num_bits: The number of bits on which k is encoded.
+    :param two_dim: if set to True, the encoding considered is |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>, otherwise
+    it is the 3d encoding scheme. Defaults to True.
+    :param section_divider: If two_dim is True, the statevector representation will be
+    |psi_k> = cos(k*pi/sector_divider)|0> + sin(k*pi/sector_divider)|1>. If None, it will be considered as 2^size.
     :return: A List of numpy arrays containing the state vectors of all possible values |psi_k>|0>...|0>,
     numerically ordered.
     """
     set_list = []
     for k in range(0, 2**num_bits):
-        psi = get_psi_statevector(k, num_bits)
+        if two_dim:
+            psi = get_2d_code(k, num_bits, section_divider)
+        else:
+            psi = get_3d_code(k, num_bits)
         psi_anc = get_psi_with_ancillas(psi, num_bits)
         set_list.append(psi_anc)
 
@@ -67,8 +43,8 @@ def create_cbs(num_qubits):
     """
     cbs_list = []
     for k in range(0, 2**num_qubits):
-        psi = np.zeros(2 ** num_qubits)
-        psi[k] = 1.
+        psi = np.zeros(2 ** num_qubits, dtype=complex)
+        psi[k] = complex(real=1)
         cbs_list.append(psi)
 
     return cbs_list
@@ -76,7 +52,7 @@ def create_cbs(num_qubits):
 
 def _get_b1_b2(k, num_bits, set_list):
     """
-    Computes |b1> and |b2> using Grand-Schmidt orthogonalization.
+    Computes |b1> and |b2> using Gram-Schmidt orthogonalization.
 
     :param k: The index of U_k matrix.
     :param num_bits: The number of bits on which k is encoded.
@@ -85,7 +61,7 @@ def _get_b1_b2(k, num_bits, set_list):
     """
     b1_vector = set_list[k]
     psi_2 = set_list[(k + 1) % 2**num_bits]
-    dot_prod = np.dot(b1_vector, psi_2.reshape(2**num_bits, 1))
+    dot_prod = np.dot(b1_vector.conjugate(), psi_2.reshape(2**num_bits, 1))
     b2_vector = psi_2 - dot_prod*b1_vector
 
     norm = np.linalg.norm(b2_vector)
@@ -95,20 +71,20 @@ def _get_b1_b2(k, num_bits, set_list):
 
 def _get_c1_c2(k, num_bits):
     """
-    Computes |b1> and |b2> following Brun et al.'s recipe.
+    Computes |c1> and |c2> following Brun et al.'s recipe.
 
     :param k: The index of U_k matrix.
     :param num_bits: The number of bits on which k is encoded.
     :return: A list containing the statevectors [|c1>, |c2>].
     """
 
-    c1_vector = np.zeros(2**num_bits)
-    c1_vector[k] = 1.
+    c1_vector = np.zeros(2**num_bits, dtype=complex)
+    c1_vector[k] = complex(real=1.)
 
     cbs_set = create_cbs(num_bits)
     cbs_set.pop(k)
     norm_factor = 1/math.sqrt(2**num_bits - 1)
-    c2_vector = np.zeros(2**num_bits)
+    c2_vector = np.zeros(2**num_bits, dtype=complex)
     for psi in cbs_set:
         c2_vector += psi
     c2_vector *= norm_factor
@@ -127,12 +103,12 @@ def _fill_basis_utility(basis, count, target, num_bits):
     for e in create_cbs(num_bits):
         # print()
         # print("Trying candidate e = ", e)
-        # print()
+        # print()  # DEBUG
         # try to orthogonalize the CBS state
         column_e = e.copy().reshape(2 ** num_bits, 1)
         candidate_e = e.reshape(1, 2**num_bits)
         for psi in basis:
-            factor = np.dot(psi, column_e)
+            factor = np.dot(psi.conjugate(), column_e)
             candidate_e -= factor * psi
         norm = np.linalg.norm(candidate_e)
         # print("Norm for this candidate is ", norm)
@@ -154,39 +130,45 @@ def _fill_basis(basis, num_bits):
     return np.vstack(basis)
 
 
-def get_u(k, num_bits):
+def get_u(k, num_bits, two_dim=True, section_divider=None):
     """
-    Compute U_k matrix as specified by Brun et al. in <li>"brun": use the algorithm in
-    <a href="https://arxiv.org/abs/0811.1209">this article</a>
+    Compute U_k matrix as specified by Brun et al. in
+    <a href="https://arxiv.org/abs/0811.1209">this article</a>.
 
     :param k: The index of matrix U_k
     :param num_bits: The number of bits on which k is encoded.
+    :param two_dim: if set to True, the encoding considered is |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>, otherwise
+    it is the 3d encoding scheme. Defaults to True.
+    :param section_divider: If two_dim is True and section_divider is not None, the statevector representation will be
+    |psi_k> = cos(k*pi/sector_divider)|0> + sin(k*pi/sector_divider)|1>.
     :return: The U matrix as a numpy 2-dimensional array.
     """
 
-    states_set = create_set(num_bits)
+    states_set = create_set(num_bits, two_dim, section_divider)
     b_basis = _get_b1_b2(k, num_bits, states_set)
     c_basis = _get_c1_c2(k, num_bits)
+
     _fill_basis(b_basis, num_bits)
     _fill_basis(c_basis, num_bits)
 
-    u_matrix = np.zeros(2**(2*num_bits))
+    u_matrix = np.zeros(2**(2*num_bits), dtype=complex)
     u_matrix = u_matrix.reshape(2**num_bits, 2**num_bits)
     for i in range(len(b_basis)):
-        u_matrix += np.dot(c_basis[i].reshape(2**num_bits, 1), b_basis[i])
-    # print("U = ", u_matrix)  # DEBUG
+        u_matrix += np.dot(c_basis[i].reshape(2**num_bits, 1), b_basis[i].conjugate())
+    # print("U_", k, "= ", u_matrix)  # DEBUG
+    # print("I = ", np.dot(u_matrix, np.matrix.getH(u_matrix)))  # DEBUG
 
     return u_matrix
 
 
-def get_u_qiskit(k, num_bits):
+def get_u_qiskit(k, num_bits, two_dim=True, section_divider=None):
     """
-    See References for get_u, the only difference is that the matrix returned by this method can be used on the
-    reverse ordered qubits in Qiskit
+    See References for get_u, the only difference is that the matrix returned by this method can be used on Qiskit,
+    which has reverse ordered qubits.
     """
 
     swapper = _get_qiskit_inverter(num_bits)
-    u = get_u(k, num_bits)
+    u = get_u(k, num_bits, two_dim, section_divider)
     u = np.dot(np.dot(swapper, u), swapper)
     return u
 

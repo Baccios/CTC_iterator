@@ -50,9 +50,9 @@ if __name__ == '__main__':
     print("elapsed time = ", end-start, "s")
     """
 
-    sim = CTCCircuitSimulator(size=4, k_value=2, cloning_size=3, ctc_recipe="brun")
+    sim = CTCCircuitSimulator(size=2, k_value=0, ctc_recipe="brun_quadrant")
     start = time.time()
-    sim.test_convergence(c_value=3, start=1, stop=19, step=3, cloning="no_cloning")
+    sim.test_convergence(c_value=1, start=1, stop=131, step=10, cloning="no_cloning")
     end = time.time()
     print("elapsed time = ", end-start, "s")
     """

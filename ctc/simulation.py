@@ -1,5 +1,5 @@
 """
-This module provides an API to perform simulations of an iterated CTC cloning circuit.
+This module provides an API to perform simulations of an iterated D-CTC simulation circuit.
 """
 
 import math
@@ -23,6 +23,8 @@ from qiskit.providers.ibmq.managed import IBMQJobManager
 import matplotlib.pyplot as plt
 
 # from ctc.block_generator import get_ctc_assisted_circuit
+from ctc.brun import get_3d_code
+from ctc.encodings import get_brun_fig2_encoding, get_2d_code
 from ctc.gates.cloning import CloningGate
 from ctc.gates.ctc_assisted import CTCGate
 from ctc.gates.p_gate import PGate
@@ -49,11 +51,22 @@ class CTCCircuitSimulator:
                             <a href="https://arxiv.org/abs/1901.00379">this article</a> (default value)
                         </li>
                         <li>"brun": use the algorithm in
-                            <a href="https://arxiv.org/abs/0811.1209">this article</a>
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a> and apply the 2d encoding with
+                            states equally distributed on the XZ plane of the Bloch sphere
                         </li>
                         <li>"brun_fig2": use the algorithm in
                             <a href="https://arxiv.org/abs/0811.1209">this article</a> in the variant for Fig.2.
                             (Note that this case is only limited to 2 bits)
+                        </li>
+                        <li>
+                            "brun_3d": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a> and apply the 3d encoding
+                            scheme for input states.
+                        </li>
+                        <li>
+                            "brun_quadrant": use the algorithm in
+                            <a href="https://arxiv.org/abs/0811.1209">this article</a> and apply the 2d encoding with
+                            states confined in a 45 degrees quadrant of the Bloch sphere
                         </li>
                     </ol>
         :type ctc_recipe: str
@@ -195,27 +208,17 @@ class CTCCircuitSimulator:
 
         # first treat the alternative encoding for Brun (Fig 2 case):
         if self._ctc_recipe == "brun_fig2":
-            if self._k_value == 0:
-                psi = [1, 0]
-            elif self._k_value == 1:
-                psi = [0, 1]
-            elif self._k_value == 2:
-                psi = [
-                    math.cos(pi/4),
-                    math.sin(pi/4)
-                ]
-            elif self._k_value == 3:
-                psi = [
-                    math.cos(3*pi/4),
-                    math.sin(3*pi/4)
-                ]
+            psi = get_brun_fig2_encoding(self._k_value, self._size).tolist()
+
+        elif self._ctc_recipe == "brun_3d":
+            psi = get_3d_code(self._k_value, self._size).tolist()
+
+        elif self._ctc_recipe == "brun_quadrant":
+            psi = get_2d_code(self._k_value, self._size, sector_divider=2**(self._size + 2)).tolist()
 
         else:
             # encode k in a state |ψ⟩ = cos(kπ/2^n)|0⟩ + sin(kπ/2^n)|1⟩
-            psi = [
-                math.cos((self._k_value * pi) / 2 ** self._size),
-                math.sin((self._k_value * pi) / 2 ** self._size)
-            ]
+            psi = get_2d_code(self._k_value, self._size).tolist()
 
         # print("k = ", self.__k_value, ", psi is encoded as: ", psi)  # DEBUG
 
@@ -507,8 +510,8 @@ class CTCCircuitSimulator:
               <li>
                 cloning: can assume one of these values:
                 <ol>
-                    <li>"no_cloning" (default): Do not use cloning to replicate psi state</li>
-                    <li>"initial": use cloning only for the first cloning_size iterations</li>
+                    <li>"no_cloning" (default): use only fresh copies to replicate psi state</li>
+                    <li>"initial": use quantum cloning only for the first cloning_size iterations</li>
                     <li>"full": use cloning for each iteration
                 </ol>
               </li>
