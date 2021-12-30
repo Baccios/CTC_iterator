@@ -130,6 +130,67 @@ def _fill_basis(basis, num_bits):
     return np.vstack(basis)
 
 
+def get_u_old(k, num_bits, two_dim=True, section_divider=None, phi=None):
+    """
+    Compute U_k matrix as specified by Brun et al. in
+    <a href="https://arxiv.org/abs/0811.1209">this article</a>.
+
+    :param k: The index of matrix U_k
+    :param num_bits: The number of bits on which k is encoded.
+    :param two_dim: if set to True, the encoding considered is |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>, otherwise
+    it is the 3d encoding scheme. Defaults to True.
+    :param section_divider: If two_dim is True and section_divider is not None, the statevector representation will be
+    |psi_k> = cos(k*pi/sector_divider)|0> + sin(k*pi/sector_divider)|1>.
+    :return: The U matrix as a numpy 2-dimensional array.
+    """
+
+    states_set = create_set(num_bits, two_dim, section_divider)
+
+    psi_k_ancillas = states_set[k][0]
+    psi_k = np.array([psi_k_ancillas[0], psi_k_ancillas[2**(num_bits - 1)]])
+    k_cbs_state = np.zeros(2**num_bits, dtype=complex)
+    k_cbs_state[k] = 1.
+
+    k_xor_1 = (k + 1) % 2**num_bits
+
+    k_xor_1_state = np.zeros(2**num_bits, dtype=complex)
+    k_xor_1_state[k_xor_1] = 1.
+
+    psi_k_ort_ancillas = states_set[(k + 1) % 2**num_bits][0]
+    psi_k_ort = np.array([psi_k_ort_ancillas[0], psi_k_ort_ancillas[2**(num_bits - 1)]])
+    column_psi_k_ort = np.array(psi_k_ort, copy=True).reshape(2, 1)
+    factor = np.dot(psi_k.conjugate(), column_psi_k_ort)
+    psi_k_ort -= factor * psi_k
+
+    psi_k_ort /= np.linalg.norm(psi_k_ort)
+
+    # reshape as a column vector
+    k_cbs_state = k_cbs_state.reshape(2**num_bits, 1)
+    k_xor_1_state = k_xor_1_state.reshape(2**num_bits, 1)
+
+    v_matrix = np.dot(k_cbs_state, psi_k.conjugate().reshape(1,2))
+    v_matrix += np.dot(k_xor_1_state, psi_k_ort.conjugate().reshape(1,2))
+
+    # print(v_matrix)
+
+    u_matrix = np.zeros(shape=(2**num_bits, 2**num_bits), dtype=complex)
+    u_matrix[:, 0] = v_matrix[:, 0]
+    u_matrix[:, 2**(num_bits-1)] = v_matrix[:, 1]
+
+    j = 0
+    for i in range(2**num_bits):
+        if i != 0 and i != 2**(num_bits - 1):
+            while j == k or j == k_xor_1:
+                j += 1
+            u_matrix[j, i] = 1.
+            j += 1
+
+    # print("U_", k, "= ", u_matrix)  # DEBUG
+    # print("I = ", np.dot(u_matrix, np.matrix.getH(u_matrix)))  # DEBUG
+
+    return u_matrix
+
+
 def get_u(k, num_bits, two_dim=True, section_divider=None):
     """
     Compute U_k matrix as specified by Brun et al. in

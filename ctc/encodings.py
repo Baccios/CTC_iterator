@@ -7,7 +7,7 @@ from math import pi
 import math
 
 
-def get_2d_code(k_value, num_bits, sector_divider=None):
+def get_2d_code(k_value, num_bits, sector_divider=None, phi=None):
     """
     Returns an array containing the statevector representation of |psi_k> = cos(k*pi/2^n)|0> + sin(k*pi/2^n)|1>
 
@@ -15,14 +15,18 @@ def get_2d_code(k_value, num_bits, sector_divider=None):
     :param num_bits: The number of bits on which k is encoded
     :param sector_divider: if not None, the statevector representation will be
     |psi_k> = cos(k*pi/sector_divider)|0> + sin(k*pi/sector_divider)|1>. Defaults to None.
+    :param phi: If not None, The statevector representation plane will be rotated horizontally
+    by the angle phi in radiants.
+    :type phi: float
     :return: The numpy array containing the statevector representation of |psi_k>
     """
 
     if sector_divider is None:
         sector_divider = 2**num_bits
     angle = pi * k_value / sector_divider
-    if k_value == 2 ** (num_bits - 1):  # optimization
-        psi_vector = np.array([complex(real=0.), complex(real=1.)])
+    if phi is not None:
+        psi_vector = np.array([complex(real=math.cos(angle)), complex(real=math.sin(angle)*math.cos(phi),
+                                                                      imag=math.sin(angle)*math.sin(phi))])
     else:
         psi_vector = np.array([complex(real=math.cos(angle)), complex(real=math.sin(angle))])
     return psi_vector
@@ -125,7 +129,7 @@ def get_brun_fig2_encoding(k_value, num_bits):
             math.cos(3 * pi / 4),
             math.sin(3 * pi / 4)
         ]
-    return np.ndarray(psi)
+    return np.array(psi)
 
 
 def get_psi_with_ancillas(psi_vector, num_qubits):

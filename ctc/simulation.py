@@ -11,7 +11,7 @@ import scipy.stats
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
-from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister, execute, transpile, assemble
+from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister, execute, transpile
 from qiskit.circuit import Gate
 from qiskit.extensions import Initialize
 from qiskit.providers.aer import QasmSimulator
@@ -73,7 +73,8 @@ class CTCCircuitSimulator:
         :param base_block: The explicit gate to be used as basic block. When not specified,
                 the gate will be built using the recipe specified in parameter ctc_recipe.
         :type base_block: qiskit.circuit.Gate
-        :param cloning_size: the size of the internal CloningGate
+        :param cloning_size: the size of the internal CloningGate. It will be significant
+        only in case approximate quantum cloning is used in iterations.
         :type cloning_size: int
         """
 
@@ -487,7 +488,7 @@ class CTCCircuitSimulator:
     def test_convergence(self, c_value, start, stop, step=2, **params):
         """
         Test the convergence rate of the algorithm by simulating it
-        under an increasing number of iterations. Save the output plots in ./out
+        under an increasing number of iterations. Save the output plot in ./out
 
         :param c_value: The value for the ancillary qubits, either as binary string or integer, list or float.
                         If integer, must be between 0 and 2^size - 1.
@@ -661,6 +662,8 @@ class CTCCircuitSimulator:
 
         plt.title(title)
 
+        plt.axhline(y=0.95, linewidth=1, color='red')
+
         # build the bar plot
         x_positions = np.arange(len(probabilities))
         plt.bar(
@@ -688,6 +691,7 @@ class CTCCircuitSimulator:
         plt.savefig(image_basename + '_bar.pdf')
         plt.close()
 
+        """
         # select the second plot
         plt.figure(2)
 
@@ -715,12 +719,12 @@ class CTCCircuitSimulator:
         # save also the second plot
         plt.savefig(image_basename + '_log.pdf')
         plt.close()
+        """
 
-
-    def test_c_variability(self, c_values, start, stop, step=2, c_tick_labels=None, **params):
+    def test_c_impact(self, c_values, start, stop, step=2, c_tick_labels=None, **params):
         """
         Test the convergence of the algorithm with different initial values of c.
-        Plots the outcome in a 3d bar plot.
+        Plot the outcome in a 2d or 3d bar plot.
         Save the output plot in ./out
 
         :param c_value: The value for the ancillary qubits, either as binary string or integer, list or float.
